@@ -371,10 +371,7 @@ describe("legacy status adapter", () => {
     expect(status.inProgressWithoutWorktree).toHaveLength(1);
     expect(status.tasks[0]?.worktrees[0]?.pullRequests).toEqual([]);
     expect(status.slots).toEqual({ used: 2, maximum: 3 });
-    await expect(readArgvLog(fake.logPath)).resolves.toEqual([
-      ["--version"],
-      ["status", "--json"],
-    ]);
+    await expect(readArgvLog(fake.logPath)).resolves.toEqual([["--version"], ["status", "--json"]]);
   });
 
   it("preserves local workspaces when an unavailable remote attempt has no payload", async () => {

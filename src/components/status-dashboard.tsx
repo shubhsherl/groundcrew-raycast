@@ -139,7 +139,9 @@ function localTaskSubtitle(task: GroundcrewStatusTask): string {
   const worktree = task.worktrees[0];
   const repository = task.source?.repository ?? worktree?.repository ?? "Repository unavailable";
   const branch = worktree?.branch;
-  return branch === undefined ? `${task.task} · ${repository}` : `${task.task} · ${repository} · ${branch}`;
+  return branch === undefined
+    ? `${task.task} · ${repository}`
+    : `${task.task} · ${repository} · ${branch}`;
 }
 
 function LocalTaskRow({
@@ -170,9 +172,7 @@ function LocalTaskRow({
         { text: task.agent ?? task.source?.agent ?? "Agent unavailable", icon: Icon.Person },
         { tag: { value: state, color: localTaskColor(task) } },
       ]}
-      actions={
-        <TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />
-      }
+      actions={<TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />}
     />
   );
 }
@@ -193,19 +193,14 @@ function MissingWorkspaceRow({
       title={issue.title}
       subtitle={`${issue.naturalId} · ${issue.repository ?? "Repository unavailable"}`}
       icon={{ source: Icon.XMarkCircle, tintColor: Color.Red }}
-      keywords={[
-        issue.naturalId,
-        issue.repository,
-        issue.agent,
-        "missing workspace",
-      ].filter((value): value is string => value !== undefined)}
+      keywords={[issue.naturalId, issue.repository, issue.agent, "missing workspace"].filter(
+        (value): value is string => value !== undefined,
+      )}
       accessories={[
         { text: issue.agent ?? "Agent unavailable", icon: Icon.Person },
         { tag: { value: "Missing Workspace", color: Color.Red } },
       ]}
-      actions={
-        <TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />
-      }
+      actions={<TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />}
     />
   );
 }
@@ -231,9 +226,7 @@ function QueueReadyRow({
         { text: issue.agent, icon: Icon.Person },
         { tag: { value: "Ready", color: Color.Blue } },
       ]}
-      actions={
-        <TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />
-      }
+      actions={<TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />}
     />
   );
 }
@@ -265,9 +258,7 @@ function QueueBlockedRow({
         { text: issue.agent, icon: Icon.Person },
         { tag: { value: `Blocked (${issue.blockedBy.length})`, color: Color.Red } },
       ]}
-      actions={
-        <TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />
-      }
+      actions={<TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />}
     />
   );
 }
@@ -288,7 +279,13 @@ function remoteSnapshotText(inventory: GroundcrewStatusInventory): string {
     : `${attempt} · payload captured ${inventory.remote.capturedAt}`;
 }
 
-function SlotHealthRow({ inventory }: { inventory: GroundcrewStatusInventory }) {
+function SlotHealthRow({
+  inventory,
+  onRefresh,
+}: {
+  inventory: GroundcrewStatusInventory;
+  onRefresh: () => Promise<void>;
+}) {
   const usage = slotUsageText(inventory);
   return (
     <List.Item
@@ -304,11 +301,18 @@ function SlotHealthRow({ inventory }: { inventory: GroundcrewStatusInventory }) 
           },
         },
       ]}
+      actions={<HealthRowActions onRefresh={onRefresh} />}
     />
   );
 }
 
-function RemoteHealthRow({ inventory }: { inventory: GroundcrewStatusInventory }) {
+function RemoteHealthRow({
+  inventory,
+  onRefresh,
+}: {
+  inventory: GroundcrewStatusInventory;
+  onRefresh: () => Promise<void>;
+}) {
   const retainedPayload = inventory.remote.capturedAt !== undefined;
   return (
     <List.Item
@@ -324,11 +328,18 @@ function RemoteHealthRow({ inventory }: { inventory: GroundcrewStatusInventory }
           },
         },
       ]}
+      actions={<HealthRowActions onRefresh={onRefresh} />}
     />
   );
 }
 
-function WorkspaceProbeRow({ inventory }: { inventory: GroundcrewStatusInventory }) {
+function WorkspaceProbeRow({
+  inventory,
+  onRefresh,
+}: {
+  inventory: GroundcrewStatusInventory;
+  onRefresh: () => Promise<void>;
+}) {
   return (
     <List.Item
       id="workspace-probe"
@@ -336,11 +347,18 @@ function WorkspaceProbeRow({ inventory }: { inventory: GroundcrewStatusInventory
       subtitle={inventory.workspaceProbe.error ?? "Workspace paths could not be inspected."}
       icon={{ source: Icon.HardDrive, tintColor: Color.Yellow }}
       accessories={[{ tag: { value: "Unavailable", color: Color.Yellow } }]}
+      actions={<HealthRowActions onRefresh={onRefresh} />}
     />
   );
 }
 
-function OrphanedSessionsRow({ sessions }: { sessions: string[] }) {
+function OrphanedSessionsRow({
+  onRefresh,
+  sessions,
+}: {
+  onRefresh: () => Promise<void>;
+  sessions: string[];
+}) {
   return (
     <List.Item
       id="orphaned-sessions"
@@ -348,6 +366,7 @@ function OrphanedSessionsRow({ sessions }: { sessions: string[] }) {
       subtitle={sessions.join(", ")}
       icon={{ source: Icon.Warning, tintColor: Color.Yellow }}
       accessories={[{ tag: { value: String(sessions.length), color: Color.Yellow } }]}
+      actions={<HealthRowActions onRefresh={onRefresh} />}
     />
   );
 }
@@ -402,7 +421,9 @@ function selectionTitle(selection: StatusTaskSelection): string {
 }
 
 function firstNonBlank(values: readonly (string | undefined)[]): string | undefined {
-  return values.map((value) => value?.trim()).find((value) => value !== undefined && value.length > 0);
+  return values
+    .map((value) => value?.trim())
+    .find((value) => value !== undefined && value.length > 0);
 }
 
 function selectionUrl(selection: StatusTaskSelection): string | undefined {
@@ -460,7 +481,9 @@ function selectionEligibility(selection: StatusTaskSelection): string {
     case "local":
       return selection.task.worktrees.length === 0
         ? "Workspace unavailable"
-        : "Active local workspace";
+        : isActiveTask(selection.task)
+          ? "Active local workspace"
+          : "Preserved local workspace";
     case "missing":
       return "In progress; workspace unavailable";
     case "ready":
@@ -487,7 +510,9 @@ function selectionDirtiness(selection: StatusTaskSelection): string {
   }
   if (selection.task.worktrees.length === 1) {
     const worktree = selection.task.worktrees[0];
-    return worktree === undefined ? "Unavailable without a local worktree" : worktreeDirtiness(worktree);
+    return worktree === undefined
+      ? "Unavailable without a local worktree"
+      : worktreeDirtiness(worktree);
   }
   return selection.task.worktrees
     .map((worktree) => `${worktree.repository}: ${worktreeDirtiness(worktree)}`)
@@ -500,15 +525,27 @@ function selectionPullRequests(selection: StatusTaskSelection) {
     : [];
 }
 
+function ambiguousPullRequestWorktrees(selection: StatusTaskSelection): GroundcrewStatusWorktree[] {
+  return selection.kind === "local"
+    ? selection.task.worktrees.filter((worktree) => worktree.pullRequests.length === 0)
+    : [];
+}
+
+function ambiguousPullRequestSummary(worktree: GroundcrewStatusWorktree): string {
+  return `${worktree.repository} (${worktree.branch}): No PR returned; legacy GitHub lookup may have failed`;
+}
+
 function pullRequestSummary(selection: StatusTaskSelection): string {
   const pullRequests = selectionPullRequests(selection);
-  if (pullRequests.length > 0) {
-    return pullRequests
-      .map((pullRequest) => `#${pullRequest.number} · ${pullRequest.state} · ${pullRequest.title}`)
-      .join("; ");
-  }
-  if (selection.kind === "local" && selection.task.worktrees.length > 0) {
-    return "No PR returned; legacy GitHub lookup may have failed";
+  const ambiguousWorktrees = ambiguousPullRequestWorktrees(selection);
+  const summaries = [
+    ...pullRequests.map(
+      (pullRequest) => `#${pullRequest.number} · ${pullRequest.state} · ${pullRequest.title}`,
+    ),
+    ...ambiguousWorktrees.map(ambiguousPullRequestSummary),
+  ];
+  if (summaries.length > 0) {
+    return summaries.join("; ");
   }
   return "Unavailable without a local worktree";
 }
@@ -527,14 +564,19 @@ function selectionMarkdown(selection: StatusTaskSelection): string {
   }
 
   const task = selection.task;
-  const pullRequestNote = task.worktrees.some((worktree) => worktree.pullRequests.length > 0)
-    ? []
-    : [
-        "",
-        "## Pull Requests",
-        "",
-        "No pull request was returned. The legacy status cannot distinguish no PR from a failed GitHub lookup.",
-      ];
+  const ambiguousWorktrees = ambiguousPullRequestWorktrees(selection);
+  const pullRequestNote =
+    ambiguousWorktrees.length === 0
+      ? []
+      : [
+          "",
+          "## Pull Request Lookup Limits",
+          "",
+          ...ambiguousWorktrees.map(
+            (worktree) =>
+              `- ${worktree.repository} (${worktree.branch}): No pull request was returned. The legacy status cannot distinguish no PR from a failed GitHub lookup.`,
+          ),
+        ];
   const operationalNotes = [
     task.reason === undefined ? undefined : `- **Reason:** ${task.reason}`,
     task.detail === undefined ? undefined : `- **Detail:** ${task.detail}`,
@@ -593,6 +635,14 @@ function RefreshStatusAction({ onRefresh }: { onRefresh: () => Promise<void> }) 
       shortcut={Keyboard.Shortcut.Common.Refresh}
       onAction={onRefresh}
     />
+  );
+}
+
+function HealthRowActions({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  return (
+    <ActionPanel>
+      <RefreshStatusAction onRefresh={onRefresh} />
+    </ActionPanel>
   );
 }
 
@@ -672,10 +722,7 @@ export function StatusTaskDetail({
           <Detail.Metadata.Label title="Source Status" text={selectionSourceStatus(selection)} />
           <Detail.Metadata.Label title="Repository" text={selectionRepository(selection)} />
           <Detail.Metadata.Label title="Branch" text={branches || "Unavailable"} />
-          <Detail.Metadata.Label
-            title="Worktree Dirtiness"
-            text={selectionDirtiness(selection)}
-          />
+          <Detail.Metadata.Label title="Worktree Dirtiness" text={selectionDirtiness(selection)} />
           <Detail.Metadata.Label
             title="Blockers / Eligibility"
             text={selectionEligibility(selection)}
@@ -817,24 +864,14 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
       {inventory !== undefined && activeTasks.length > 0 ? (
         <List.Section title="Active Workspaces" subtitle={`${activeTasks.length}`}>
           {activeTasks.map((task) => (
-            <LocalTaskRow
-              key={task.task}
-              task={task}
-              inventory={inventory}
-              onRefresh={refresh}
-            />
+            <LocalTaskRow key={task.task} task={task} inventory={inventory} onRefresh={refresh} />
           ))}
         </List.Section>
       ) : null}
       {inventory !== undefined && preservedTasks.length > 0 ? (
         <List.Section title="Preserved Workspaces" subtitle={`${preservedTasks.length}`}>
           {preservedTasks.map((task) => (
-            <LocalTaskRow
-              key={task.task}
-              task={task}
-              inventory={inventory}
-              onRefresh={refresh}
-            />
+            <LocalTaskRow key={task.task} task={task} inventory={inventory} onRefresh={refresh} />
           ))}
         </List.Section>
       ) : null}
@@ -845,12 +882,7 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
           subtitle={`${missingLocalTasks.length + inventory.inProgressWithoutWorktree.length}`}
         >
           {missingLocalTasks.map((task) => (
-            <LocalTaskRow
-              key={task.task}
-              task={task}
-              inventory={inventory}
-              onRefresh={refresh}
-            />
+            <LocalTaskRow key={task.task} task={task} inventory={inventory} onRefresh={refresh} />
           ))}
           {inventory.inProgressWithoutWorktree.map((issue) => (
             <MissingWorkspaceRow
@@ -867,14 +899,9 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
           title="Queue & Slot Health"
           subtitle={`${inventory.queueReady.length} ready · ${inventory.queueBlocked.length} blocked`}
         >
-          <SlotHealthRow inventory={inventory} />
+          <SlotHealthRow inventory={inventory} onRefresh={refresh} />
           {inventory.queueReady.map((issue) => (
-            <QueueReadyRow
-              key={issue.id}
-              issue={issue}
-              inventory={inventory}
-              onRefresh={refresh}
-            />
+            <QueueReadyRow key={issue.id} issue={issue} inventory={inventory} onRefresh={refresh} />
           ))}
           {inventory.queueBlocked.map((issue) => (
             <QueueBlockedRow
@@ -889,13 +916,13 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
       {inventory !== undefined && degraded ? (
         <List.Section title="Degraded Probes">
           {inventory.remote.lastAttemptStatus === "unavailable" ? (
-            <RemoteHealthRow inventory={inventory} />
+            <RemoteHealthRow inventory={inventory} onRefresh={refresh} />
           ) : null}
           {inventory.workspaceProbe.status === "unavailable" ? (
-            <WorkspaceProbeRow inventory={inventory} />
+            <WorkspaceProbeRow inventory={inventory} onRefresh={refresh} />
           ) : null}
           {inventory.orphanedSessions.length > 0 ? (
-            <OrphanedSessionsRow sessions={inventory.orphanedSessions} />
+            <OrphanedSessionsRow sessions={inventory.orphanedSessions} onRefresh={refresh} />
           ) : null}
         </List.Section>
       ) : null}

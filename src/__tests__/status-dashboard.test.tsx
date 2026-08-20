@@ -298,12 +298,12 @@ describe("StatusDashboard", () => {
       "https://linear.app/clipboardhealth/issue/TEM-3896",
       "https://github.com/ClipboardHealth/groundcrew-raycast/pull/4",
     ]);
-    expect(activeTask?.findAll((node) => node.type === "raycast-action-open")[0]?.props).toMatchObject(
-      {
-        target: "/work/groundcrew-raycast-tem-3896",
-        application: "Finder",
-      },
-    );
+    expect(
+      activeTask?.findAll((node) => node.type === "raycast-action-open")[0]?.props,
+    ).toMatchObject({
+      target: "/work/groundcrew-raycast-tem-3896",
+      application: "Finder",
+    });
     const missingLocalTask = findByType(renderer, "raycast-list-item").find(
       (item) => item.props.id === "local:tem-3903",
     );
@@ -317,9 +317,7 @@ describe("StatusDashboard", () => {
     const slotHealth = findByType(renderer, "raycast-list-item").find(
       (item) => item.props.id === "slot-health",
     );
-    expect(slotHealth?.props.subtitle).toContain(
-      "local captured 2026-08-20T08:30:00.000Z",
-    );
+    expect(slotHealth?.props.subtitle).toContain("local captured 2026-08-20T08:30:00.000Z");
     expect(slotHealth?.props.subtitle).toContain(
       "remote attempt unavailable at 2026-08-20T08:30:01.000Z",
     );
@@ -389,9 +387,9 @@ describe("StatusDashboard", () => {
     expect(findByType(ambiguousPullRequestRenderer, "raycast-detail")[0]?.props.markdown).toContain(
       "No pull request was returned. The legacy status cannot distinguish no PR from a failed GitHub lookup.",
     );
-    expect(
-      findByType(ambiguousPullRequestRenderer, "raycast-action-open-in-browser"),
-    ).toHaveLength(0);
+    expect(findByType(ambiguousPullRequestRenderer, "raycast-action-open-in-browser")).toHaveLength(
+      0,
+    );
     expect(findByType(ambiguousPullRequestRenderer, "raycast-action-open")).toHaveLength(1);
 
     const missingWorkspaceRenderer = await render(
@@ -403,13 +401,45 @@ describe("StatusDashboard", () => {
     const blockedRenderer = await render(
       <StatusTaskDetail inventory={inventory} naturalTaskId="tem-3906" />,
     );
-    const blockedEligibility = findByType(
-      blockedRenderer,
-      "raycast-detail-metadata-label",
-    ).find((label) => label.props.title === "Blockers / Eligibility");
+    const blockedEligibility = findByType(blockedRenderer, "raycast-detail-metadata-label").find(
+      (label) => label.props.title === "Blockers / Eligibility",
+    );
     expect(blockedEligibility?.props.text).toBe("Blocked by tem-3888");
     expect(findByType(blockedRenderer, "raycast-action-open-in-browser")).toHaveLength(0);
     expect(findByType(blockedRenderer, "raycast-action-open")).toHaveLength(0);
+
+    const preservedRenderer = await render(
+      <StatusTaskDetail inventory={inventory} naturalTaskId="tem-3901" />,
+    );
+    const preservedEligibility = findByType(
+      preservedRenderer,
+      "raycast-detail-metadata-label",
+    ).find((label) => label.props.title === "Blockers / Eligibility");
+    expect(preservedEligibility?.props.text).toBe("Preserved local workspace");
+
+    const mixedPullRequestInventory = structuredClone(inventory);
+    mixedPullRequestInventory.tasks[0]?.worktrees.push({
+      repository: "groundcrew-cli",
+      kind: "host",
+      dir: "/work/groundcrew-cli-tem-3896",
+      branch: "shubhsherl-tem-3896",
+      git: { kind: "clean" },
+      pullRequests: [],
+    });
+    const mixedPullRequestRenderer = await render(
+      <StatusTaskDetail inventory={mixedPullRequestInventory} naturalTaskId="tem-3896" />,
+    );
+    expect(findByType(mixedPullRequestRenderer, "raycast-detail")[0]?.props.markdown).toContain(
+      "groundcrew-cli (shubhsherl-tem-3896): No pull request was returned.",
+    );
+    expect(
+      findByType(mixedPullRequestRenderer, "raycast-action-open-in-browser").map(
+        (action) => action.props.url,
+      ),
+    ).toEqual([
+      "https://linear.app/clipboardhealth/issue/TEM-3896",
+      "https://github.com/ClipboardHealth/groundcrew-raycast/pull/4",
+    ]);
   });
 
   it("implements empty, refresh-error, unavailable-remote, and incompatible-contract states", async () => {
@@ -463,6 +493,7 @@ describe("StatusDashboard", () => {
             lastAttemptStatus: "unavailable",
             lastAttemptError: "Remote source unavailable",
           },
+          workspaceProbe: { status: "unavailable", error: "Workspace source unavailable" },
           slots: undefined,
         })}
       />,
@@ -475,6 +506,19 @@ describe("StatusDashboard", () => {
         expect.objectContaining({ tag: expect.objectContaining({ value: "No Remote Payload" }) }),
       ]),
     );
+    expect(
+      remoteHealth
+        ?.findAll((node) => node.type === "raycast-action")
+        .some((action) => action.props.title === "Refresh Status"),
+    ).toBe(true);
+    const workspaceProbe = findByType(unavailableRemoteRenderer, "raycast-list-item").find(
+      (item) => item.props.id === "workspace-probe",
+    );
+    expect(
+      workspaceProbe
+        ?.findAll((node) => node.type === "raycast-action")
+        .some((action) => action.props.title === "Refresh Status"),
+    ).toBe(true);
 
     const incompatibleRenderer = await render(
       <StatusDashboard
