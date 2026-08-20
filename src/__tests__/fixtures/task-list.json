@@ -83,5 +83,16 @@
     "updatedAt": "2026-08-19T17:00:00.000Z",
     "blockers": [],
     "hasMoreBlockers": false
+  },
+  {
+    "id": "archive:MISC-2",
+    "source": "archive",
+    "title": "Newer task with another canonical status",
+    "description": "Sort unprioritized tasks deterministically.",
+    "status": "other",
+    "assignee": "Riley",
+    "updatedAt": "2026-08-19T18:00:00.000Z",
+    "blockers": [],
+    "hasMoreBlockers": false
   }
 ]

@@ -116,10 +116,10 @@ function taskGroup(task: GroundcrewTask): TaskGroup {
 }
 
 function compareTasks(left: GroundcrewTask, right: GroundcrewTask): number {
-  const priorityDifference =
-    (left.priority ?? Number.POSITIVE_INFINITY) - (right.priority ?? Number.POSITIVE_INFINITY);
-  if (priorityDifference !== 0) {
-    return priorityDifference;
+  const leftPriority = left.priority ?? Number.POSITIVE_INFINITY;
+  const rightPriority = right.priority ?? Number.POSITIVE_INFINITY;
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority;
   }
   const leftUpdatedAt = Date.parse(left.updatedAt);
   const rightUpdatedAt = Date.parse(right.updatedAt);
@@ -231,6 +231,11 @@ function blockerTooltip(task: GroundcrewTask): string {
   return task.hasMoreBlockers ? `${visible}, and additional blockers` : visible;
 }
 
+function taskUrl(task: GroundcrewTask): string | undefined {
+  const url = task.url?.trim();
+  return url === "" ? undefined : url;
+}
+
 function taskKeywords(task: GroundcrewTask): string[] {
   return [
     task.id,
@@ -255,6 +260,7 @@ function TaskRow({
 }) {
   const status = STATUS_PRESENTATION[task.status];
   const blocked = isBlocked(task);
+  const url = taskUrl(task);
   return (
     <List.Item
       id={task.id}
@@ -290,9 +296,7 @@ function TaskRow({
             icon={Icon.Sidebar}
             target={<TaskDetail task={task} loadTask={loadTask} />}
           />
-          {task.url === undefined ? null : (
-            <Action.OpenInBrowser title="Open Task" url={task.url} />
-          )}
+          {url === undefined ? null : <Action.OpenInBrowser title="Open Task" url={url} />}
           <RefreshAction title="Refresh Tasks" onRefresh={onRefresh} />
         </ActionPanel>
       }
@@ -364,6 +368,7 @@ export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
   const loader = useCallback(() => loadTask(summary.id), [loadTask, summary.id]);
   const { error, isLoading, reload, value: task = summary } = useAsyncValue(loader, summary);
   const presentation = error === undefined ? undefined : errorPresentation(error, "detail");
+  const url = taskUrl(task);
   const refresh = useCallback(async () => {
     const refreshError = await reload();
     if (refreshError !== undefined) {
@@ -408,16 +413,14 @@ export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
           {task.priority === undefined ? null : (
             <Detail.Metadata.Label title="Priority" text={String(task.priority)} />
           )}
-          {task.url === undefined ? null : (
-            <Detail.Metadata.Link title="Task URL" target={task.url} text={task.url} />
+          {url === undefined ? null : (
+            <Detail.Metadata.Link title="Task URL" target={url} text={url} />
           )}
         </Detail.Metadata>
       }
       actions={
         <ActionPanel>
-          {task.url === undefined ? null : (
-            <Action.OpenInBrowser title="Open Task" url={task.url} />
-          )}
+          {url === undefined ? null : <Action.OpenInBrowser title="Open Task" url={url} />}
           <RefreshAction title="Refresh Task" onRefresh={refresh} />
           {presentation?.showPreferences ? (
             <Action

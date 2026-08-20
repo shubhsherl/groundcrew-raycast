@@ -111,6 +111,14 @@ describe("TaskBrowser", () => {
     expect(
       findByType(renderer, "raycast-list-section").map((section) => section.props.title),
     ).toEqual(["Ready Todo", "Active", "In Review", "Blocked", "Completed", "Other"]);
+    const otherSection = findByType(renderer, "raycast-list-section").find(
+      (section) => section.props.title === "Other",
+    );
+    expect(
+      otherSection
+        ?.findAll((node) => node.type === "raycast-list-item")
+        .map((item) => item.props.id),
+    ).toEqual(["archive:MISC-2", "archive:MISC-1"]);
     const readyTask = findByType(renderer, "raycast-list-item").find(
       (item) => item.props.id === "tracker:TEM-3895",
     );
@@ -221,7 +229,7 @@ describe("TaskDetail", () => {
       url: taskDetail.url,
     });
 
-    const withoutUrl = { ...taskDetail, url: undefined };
+    const withoutUrl = { ...taskDetail, url: "   " };
     const withoutUrlRenderer = await render(
       <TaskDetail task={withoutUrl} loadTask={async () => withoutUrl} />,
     );
