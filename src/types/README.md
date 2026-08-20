@@ -1,3 +1,3 @@
 # Domain Types
 
-Shared Groundcrew task, status, and CLI result types belong here as command behavior is implemented.
+Shared Groundcrew task, joined legacy-status, and lifecycle process-result types live in `groundcrew.ts`.
