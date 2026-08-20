@@ -1,4 +1,5 @@
 import { createElement, type ReactElement } from "react";
+import { showToast } from "@raycast/api";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -203,6 +204,49 @@ describe("TaskBrowser", () => {
       title: "Groundcrew CLI Is Incompatible",
       description: "Upgrade Groundcrew and try again.",
     });
+  });
+
+  it("ignores a stale refresh failure after a newer refresh succeeds", async () => {
+    let rejectStale: ((error: Error) => void) | undefined;
+    let resolveCurrent: ((value: GroundcrewTask[]) => void) | undefined;
+    const loadTasks = vi
+      .fn<() => Promise<GroundcrewTask[]>>()
+      .mockResolvedValueOnce(tasks)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectStale = reject;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveCurrent = resolve;
+          }),
+      );
+    const renderer = await render(
+      <TaskBrowser loadTasks={loadTasks} loadTask={async () => taskDetail} />,
+    );
+    const refresh = findByType(renderer, "raycast-action").find(
+      (action) => action.props.title === "Refresh Tasks",
+    );
+
+    let staleRefresh: Promise<void> | undefined;
+    await act(async () => {
+      staleRefresh = refresh?.props.onAction();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      const currentRefresh = refresh?.props.onAction();
+      resolveCurrent?.(tasks);
+      await currentRefresh;
+    });
+    await act(async () => {
+      rejectStale?.(new Error("obsolete failure"));
+      await staleRefresh;
+    });
+
+    expect(showToast).not.toHaveBeenCalled();
   });
 });
 

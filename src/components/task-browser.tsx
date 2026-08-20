@@ -87,8 +87,9 @@ function useAsyncValue<T>(loader: () => Promise<T>, initialValue?: T) {
     } catch (error) {
       if (mounted.current && currentRequest === requestId.current) {
         setState((current) => ({ ...current, error, isLoading: false }));
+        return error;
       }
-      return error;
+      return undefined;
     }
   }, [loader]);
 
