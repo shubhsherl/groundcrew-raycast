@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 
 import { createGroundcrewClient, type GroundcrewClient } from "./cli";
 import { StatusDashboard } from "./components";
+import type { LifecycleMutations } from "./components/lifecycle-actions";
 
 interface Preferences {
   crewPath?: string;
@@ -25,6 +26,16 @@ export default function Command() {
     };
   }, [crewPath]);
   const loadStatus = useCallback(async () => (await getClient()).getStatus(), [getClient]);
+  const loadTasks = useCallback(async () => (await getClient()).listTasks(), [getClient]);
+  const mutations = useMemo<LifecycleMutations>(
+    () => ({
+      startTask: async (taskId, options) => (await getClient()).startTask(taskId, options),
+      stopTask: async (taskId, options) => (await getClient()).stopTask(taskId, options),
+      resumeTask: async (taskId, options) => (await getClient()).resumeTask(taskId, options),
+      cleanupTask: async (taskId, options) => (await getClient()).cleanupTask(taskId, options),
+    }),
+    [getClient],
+  );
 
-  return <StatusDashboard loadStatus={loadStatus} />;
+  return <StatusDashboard loadStatus={loadStatus} loadTasks={loadTasks} mutations={mutations} />;
 }

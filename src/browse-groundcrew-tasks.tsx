@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 
 import { createGroundcrewClient, type GroundcrewClient } from "./cli";
 import { TaskBrowser } from "./components";
+import type { LifecycleMutations } from "./components/lifecycle-actions";
 
 interface Preferences {
   crewPath?: string;
@@ -29,6 +30,23 @@ export default function Command() {
     async (taskId: string) => (await getClient()).getTask(taskId),
     [getClient],
   );
+  const loadStatus = useCallback(async () => (await getClient()).getStatus(), [getClient]);
+  const mutations = useMemo<LifecycleMutations>(
+    () => ({
+      startTask: async (taskId, options) => (await getClient()).startTask(taskId, options),
+      stopTask: async (taskId, options) => (await getClient()).stopTask(taskId, options),
+      resumeTask: async (taskId, options) => (await getClient()).resumeTask(taskId, options),
+      cleanupTask: async (taskId, options) => (await getClient()).cleanupTask(taskId, options),
+    }),
+    [getClient],
+  );
 
-  return <TaskBrowser loadTasks={loadTasks} loadTask={loadTask} />;
+  return (
+    <TaskBrowser
+      loadTasks={loadTasks}
+      loadTask={loadTask}
+      loadStatus={loadStatus}
+      mutations={mutations}
+    />
+  );
 }

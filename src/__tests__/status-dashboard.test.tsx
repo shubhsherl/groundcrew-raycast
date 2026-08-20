@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { GroundcrewClientError } from "../cli";
 import { StatusDashboard, StatusTaskDetail } from "../components/status-dashboard";
-import type { GroundcrewStatusInventory } from "../types/groundcrew";
+import type { LifecycleMutations } from "../components/lifecycle-actions";
+import type { GroundcrewStatusInventory, GroundcrewTask } from "../types/groundcrew";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,11 +37,17 @@ vi.mock("@raycast/api", () => {
     Open: mockComponent("raycast-action-open"),
     OpenInBrowser: mockComponent("raycast-action-open-in-browser"),
     Push: mockComponent("raycast-action-push"),
+    Style: { Destructive: "destructive" },
+    SubmitForm: mockComponent("raycast-action-submit-form"),
+  });
+  const Form = Object.assign(mockComponent("raycast-form", ["actions"]), {
+    TextArea: mockComponent("raycast-form-text-area"),
   });
 
   return {
     Action,
     ActionPanel: mockComponent("raycast-action-panel"),
+    Alert: { ActionStyle: { Destructive: "destructive" } },
     Color: {
       Blue: "blue",
       Green: "green",
@@ -51,12 +58,15 @@ vi.mock("@raycast/api", () => {
       Yellow: "yellow",
     },
     Detail,
+    Form,
     Icon: new Proxy({}, { get: (_target, property) => String(property) }),
     Keyboard: { Shortcut: { Common: { Refresh: { modifiers: ["cmd"], key: "r" } } } },
     List,
     openExtensionPreferences: vi.fn(),
+    confirmAlert: vi.fn(),
     showToast: vi.fn(),
-    Toast: { Style: { Failure: "failure" } },
+    Toast: { Style: { Animated: "animated", Failure: "failure", Success: "success" } },
+    useNavigation: () => ({ pop: vi.fn() }),
   };
 });
 
@@ -226,6 +236,43 @@ const inventory: GroundcrewStatusInventory = {
   slots: { used: 3, maximum: 3 },
 };
 
+const canonicalTasks: GroundcrewTask[] = [
+  {
+    id: "linear:tem-3905",
+    source: "linear",
+    title: "Ready task",
+    description: "",
+    status: "todo",
+    repository: "ClipboardHealth/groundcrew",
+    agent: "codex",
+    assignee: "Shubham",
+    updatedAt: "2026-08-20T08:30:00.000Z",
+    blockers: [],
+    hasMoreBlockers: false,
+  },
+];
+
+function lifecycleMutations(overrides: Partial<LifecycleMutations> = {}): LifecycleMutations {
+  const success = async () => ({
+    kind: "success" as const,
+    exitCode: 0 as const,
+    stdout: "",
+    stderr: "",
+  });
+  return {
+    startTask: success,
+    stopTask: success,
+    resumeTask: success,
+    cleanupTask: success,
+    ...overrides,
+  };
+}
+
+const defaultLifecycleProps = {
+  loadTasks: async () => canonicalTasks,
+  mutations: lifecycleMutations(),
+};
+
 function findByType(renderer: ReactTestRenderer, type: string): ReactTestInstance[] {
   return renderer.root.findAll((node) => node.type === type);
 }
@@ -243,6 +290,107 @@ async function render(element: ReactElement): Promise<ReactTestRenderer> {
 }
 
 describe("StatusDashboard", () => {
+  it("offers lifecycle actions and reconciles through full status and task refreshes", async () => {
+    vi.mocked(showToast).mockResolvedValue({} as never);
+    const loadStatus = vi.fn(async () => inventory);
+    const loadTasks = vi.fn(async () => canonicalTasks);
+    const startTask = vi.fn<LifecycleMutations["startTask"]>().mockResolvedValue({
+      kind: "success",
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+    const renderer = await render(
+      <StatusDashboard
+        loadStatus={loadStatus}
+        loadTasks={loadTasks}
+        mutations={lifecycleMutations({ startTask })}
+      />,
+    );
+
+    const active = findByType(renderer, "raycast-list-item").find(
+      (item) => item.props.id === "local:linear:tem-3896",
+    );
+    expect(
+      active
+        ?.findAll((node) => node.type === "raycast-action-push")
+        .map((action) => action.props.title),
+    ).toContain("Stop Task");
+    const preserved = findByType(renderer, "raycast-list-item").find(
+      (item) => item.props.id === "local:tem-3901",
+    );
+    expect(
+      preserved
+        ?.findAll((node) => node.type === "raycast-action")
+        .map((action) => action.props.title),
+    ).toEqual(expect.arrayContaining(["Resume Task", "Cleanup Task"]));
+    const ready = findByType(renderer, "raycast-list-item").find(
+      (item) => item.props.id === "queue-ready:linear:tem-3905",
+    );
+    const start = ready
+      ?.findAll((node) => node.type === "raycast-action")
+      .find((action) => action.props.title === "Start Task");
+    expect(start).toBeDefined();
+
+    await act(async () => {
+      await start?.props.onAction();
+    });
+
+    expect(startTask).toHaveBeenCalledWith(
+      "linear:tem-3905",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(loadStatus.mock.calls).toEqual([[], []]);
+    expect(loadTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps same-natural-id provider rows and actions distinct", async () => {
+    const linearReady = inventory.queueReady[0];
+    if (linearReady === undefined) {
+      throw new Error("Expected a ready fixture.");
+    }
+    const collidingInventory: GroundcrewStatusInventory = {
+      ...inventory,
+      tasks: [],
+      inProgressWithoutWorktree: [],
+      queueReady: [linearReady, { ...linearReady, id: "jira:tem-3905", title: "Jira task" }],
+      queueBlocked: [],
+      orphanedSessions: [],
+    };
+    const startTask = vi.fn<LifecycleMutations["startTask"]>().mockResolvedValue({
+      kind: "success",
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+    vi.mocked(showToast).mockResolvedValue({} as never);
+    const renderer = await render(
+      <StatusDashboard
+        loadStatus={async () => collidingInventory}
+        loadTasks={async () => []}
+        mutations={lifecycleMutations({ startTask })}
+      />,
+    );
+
+    const providerRows = findByType(renderer, "raycast-list-item").filter((item) =>
+      String(item.props.id).startsWith("queue-ready:"),
+    );
+    expect(providerRows.map((item) => item.props.id)).toEqual([
+      "queue-ready:linear:tem-3905",
+      "queue-ready:jira:tem-3905",
+    ]);
+    const jiraStart = providerRows[1]
+      ?.findAll((node) => node.type === "raycast-action")
+      .find((action) => action.props.title === "Start Task");
+    await act(async () => {
+      await jiraStart?.props.onAction();
+    });
+    expect(startTask).toHaveBeenCalledWith(
+      "jira:tem-3905",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
   it("shows loading and then orders active and preserved workspaces before queue and degraded health", async () => {
     let resolveStatus: ((value: GroundcrewStatusInventory) => void) | undefined;
     const loadStatus = vi.fn(
@@ -251,7 +399,9 @@ describe("StatusDashboard", () => {
           resolveStatus = resolve;
         }),
     );
-    const renderer = await render(<StatusDashboard loadStatus={loadStatus} />);
+    const renderer = await render(
+      <StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />,
+    );
 
     expect(findByType(renderer, "raycast-list")[0]?.props.isLoading).toBe(true);
     expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe(
@@ -273,23 +423,27 @@ describe("StatusDashboard", () => {
       "Degraded Probes",
     ]);
     expect(findByType(renderer, "raycast-list-item").map((item) => item.props.id)).toEqual([
-      "local:tem-3896",
+      "local:linear:tem-3896",
       "local:tem-3900",
       "local:tem-3901",
       "local:tem-3902",
       "local:tem-3903",
-      "remote-missing:tem-3904",
+      "remote-missing:linear:tem-3904",
       "slot-health",
-      "queue-ready:tem-3905",
-      "queue-blocked:tem-3906",
+      "queue-ready:linear:tem-3905",
+      "queue-blocked:linear:tem-3906",
       "remote-health",
       "workspace-probe",
       "orphaned-sessions",
     ]);
     const activeTask = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "local:tem-3896",
+      (item) => item.props.id === "local:linear:tem-3896",
     );
-    expect(activeTask?.findAll((node) => node.type === "raycast-action-push")).toHaveLength(1);
+    expect(
+      activeTask
+        ?.findAll((node) => node.type === "raycast-action-push")
+        .map((action) => action.props.title),
+    ).toEqual(expect.arrayContaining(["Stop Task", "Show Task Details"]));
     expect(
       activeTask
         ?.findAll((node) => node.type === "raycast-action-open-in-browser")
@@ -334,7 +488,7 @@ describe("StatusDashboard", () => {
         ]),
     );
     expect(lifecycleByTask).toMatchObject({
-      "local:tem-3896": "Running",
+      "local:linear:tem-3896": "Running",
       "local:tem-3900": "Resumed",
       "local:tem-3901": "Interrupted",
       "local:tem-3902": "Exited",
@@ -462,7 +616,9 @@ describe("StatusDashboard", () => {
       .fn<() => Promise<GroundcrewStatusInventory>>()
       .mockResolvedValueOnce(emptyInventory)
       .mockRejectedValueOnce(new Error("temporary status failure"));
-    const renderer = await render(<StatusDashboard loadStatus={loadStatus} />);
+    const renderer = await render(
+      <StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />,
+    );
 
     expect(findByType(renderer, "raycast-list-empty-view")[0]?.props).toMatchObject({
       title: "No Groundcrew Work",
@@ -486,6 +642,7 @@ describe("StatusDashboard", () => {
 
     const unavailableRemoteRenderer = await render(
       <StatusDashboard
+        {...defaultLifecycleProps}
         loadStatus={async () => ({
           ...emptyInventory,
           remote: {
@@ -522,6 +679,7 @@ describe("StatusDashboard", () => {
 
     const incompatibleRenderer = await render(
       <StatusDashboard
+        {...defaultLifecycleProps}
         loadStatus={async () => {
           throw new GroundcrewClientError(
             "STATUS_SCHEMA_MISMATCH",

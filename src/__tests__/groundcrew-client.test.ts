@@ -499,6 +499,12 @@ describe("lifecycle process results", () => {
     await expect(client.startTask("missing-now")).resolves.toMatchObject({
       kind: "launch-failure",
     });
+    await expect(readArgvLog(fake.logPath)).resolves.toEqual([
+      ["--version"],
+      ["start", "failure"],
+      ["cleanup", "slow"],
+      ["resume", "cancel-me"],
+    ]);
   });
 });
 
