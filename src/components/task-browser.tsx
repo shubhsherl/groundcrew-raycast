@@ -15,9 +15,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GroundcrewClientError } from "../cli";
 import type {
   GroundcrewCanonicalStatus,
+  GroundcrewStatusInventory,
   GroundcrewTask,
   GroundcrewTaskBlocker,
 } from "../types/groundcrew";
+import {
+  findCanonicalTask,
+  findLifecycleTask,
+  LifecycleActions,
+  type LifecycleActionController,
+  type LifecycleMutations,
+  useLifecycleActionController,
+} from "./lifecycle-actions";
 
 type TaskFilter = "all" | "ready" | "blocked" | GroundcrewCanonicalStatus;
 type TaskGroup = "ready" | "in-progress" | "in-review" | "blocked" | "done" | "other";
@@ -25,6 +34,8 @@ type TaskGroup = "ready" | "in-progress" | "in-review" | "blocked" | "done" | "o
 interface TaskBrowserProps {
   loadTask: (taskId: string) => Promise<GroundcrewTask>;
   loadTasks: () => Promise<GroundcrewTask[]>;
+  loadStatus: () => Promise<GroundcrewStatusInventory>;
+  mutations: LifecycleMutations;
 }
 
 interface TaskDetailProps {
@@ -37,6 +48,11 @@ interface AsyncState<T> {
   isLoading: boolean;
   value?: T;
 }
+
+type ReloadResult<T> =
+  | { kind: "success"; value: T }
+  | { kind: "failure"; error: unknown }
+  | { kind: "stale" };
 
 interface ErrorPresentation {
   description: string;
@@ -75,21 +91,22 @@ function useAsyncValue<T>(loader: () => Promise<T>, initialValue?: T) {
   const mounted = useRef(false);
   const requestId = useRef(0);
 
-  const reload = useCallback(async (): Promise<unknown | undefined> => {
+  const reload = useCallback(async (): Promise<ReloadResult<T>> => {
     const currentRequest = ++requestId.current;
     setState((current) => ({ ...current, error: undefined, isLoading: true }));
     try {
       const value = await loader();
       if (mounted.current && currentRequest === requestId.current) {
         setState({ isLoading: false, value });
+        return { kind: "success", value };
       }
-      return undefined;
+      return { kind: "stale" };
     } catch (error) {
       if (mounted.current && currentRequest === requestId.current) {
         setState((current) => ({ ...current, error, isLoading: false }));
-        return error;
+        return { kind: "failure", error };
       }
-      return undefined;
+      return { kind: "stale" };
     }
   }, [loader]);
 
@@ -251,12 +268,16 @@ function taskKeywords(task: GroundcrewTask): string[] {
 }
 
 function TaskRow({
+  controller,
   loadTask,
   onRefresh,
+  status: lifecycleStatus,
   task,
 }: {
+  controller: LifecycleActionController;
   loadTask: (taskId: string) => Promise<GroundcrewTask>;
   onRefresh: () => Promise<void>;
+  status: ReturnType<typeof findLifecycleTask>;
   task: GroundcrewTask;
 }) {
   const status = STATUS_PRESENTATION[task.status];
@@ -292,6 +313,12 @@ function TaskRow({
       ]}
       actions={
         <ActionPanel>
+          <LifecycleActions
+            controller={controller}
+            taskId={task.id}
+            task={task}
+            status={lifecycleStatus}
+          />
           <Action.Push
             title="Show Details"
             icon={Icon.Sidebar}
@@ -371,9 +398,9 @@ export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
   const presentation = error === undefined ? undefined : errorPresentation(error, "detail");
   const url = taskUrl(task);
   const refresh = useCallback(async () => {
-    const refreshError = await reload();
-    if (refreshError !== undefined) {
-      await showRefreshFailure("Couldn’t Refresh Task", refreshError);
+    const result = await reload();
+    if (result.kind === "failure") {
+      await showRefreshFailure("Couldn’t Refresh Task", result.error);
     }
   }, [reload]);
   const markdown =
@@ -436,16 +463,34 @@ export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
   );
 }
 
-export function TaskBrowser({ loadTasks, loadTask }: TaskBrowserProps) {
+export function TaskBrowser({ loadTasks, loadTask, loadStatus, mutations }: TaskBrowserProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const { error, isLoading, reload, value: tasks } = useAsyncValue(loadTasks);
+  const { reload: reloadStatus, value: status } = useAsyncValue(loadStatus);
+  const reconcile = useCallback(
+    async (taskId: string) => {
+      const [taskResult, statusResult] = await Promise.all([reload(), reloadStatus()]);
+      return {
+        taskRefreshed: taskResult.kind === "success",
+        ...(taskResult.kind === "success"
+          ? { task: findCanonicalTask(taskResult.value, taskId) }
+          : {}),
+        statusRefreshed: statusResult.kind === "success",
+        ...(statusResult.kind === "success"
+          ? { status: findLifecycleTask(statusResult.value, taskId) }
+          : {}),
+      };
+    },
+    [reload, reloadStatus],
+  );
+  const lifecycleController = useLifecycleActionController({ mutations, reconcile });
   const groups = groupedTasks(tasks ?? [], filter);
   const blockingError = error !== undefined && (tasks === undefined || tasks.length === 0);
   const presentation = blockingError ? errorPresentation(error, "list") : undefined;
   const refresh = useCallback(async () => {
-    const refreshError = await reload();
-    if (refreshError !== undefined) {
-      await showRefreshFailure("Couldn’t Refresh Tasks", refreshError);
+    const result = await reload();
+    if (result.kind === "failure") {
+      await showRefreshFailure("Couldn’t Refresh Tasks", result.error);
     }
   }, [reload]);
   const emptyTitle =
@@ -479,7 +524,14 @@ export function TaskBrowser({ loadTasks, loadTask }: TaskBrowserProps) {
       {groups.map((group) => (
         <List.Section key={group.key} title={group.title} subtitle={`${group.tasks.length}`}>
           {group.tasks.map((task) => (
-            <TaskRow key={task.id} task={task} loadTask={loadTask} onRefresh={refresh} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              loadTask={loadTask}
+              onRefresh={refresh}
+              controller={lifecycleController}
+              status={status === undefined ? undefined : findLifecycleTask(status, task.id)}
+            />
           ))}
         </List.Section>
       ))}

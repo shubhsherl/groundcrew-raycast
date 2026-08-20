@@ -20,10 +20,22 @@ import type {
   GroundcrewStatusQueueIssue,
   GroundcrewStatusTask,
   GroundcrewStatusWorktree,
+  GroundcrewTask,
 } from "../types/groundcrew";
+import {
+  findCanonicalTask,
+  findLifecycleTask,
+  LifecycleActions,
+  type LifecycleActionController,
+  type LifecycleMutations,
+  type LifecycleTaskSelection,
+  useLifecycleActionController,
+} from "./lifecycle-actions";
 
 interface StatusDashboardProps {
   loadStatus: () => Promise<GroundcrewStatusInventory>;
+  loadTasks: () => Promise<GroundcrewTask[]>;
+  mutations: LifecycleMutations;
 }
 
 interface AsyncState<T> {
@@ -31,6 +43,11 @@ interface AsyncState<T> {
   isLoading: boolean;
   value?: T;
 }
+
+type ReloadResult<T> =
+  | { kind: "success"; value: T }
+  | { kind: "failure"; error: unknown }
+  | { kind: "stale" };
 
 interface StatusErrorPresentation {
   description: string;
@@ -43,21 +60,22 @@ function useAsyncValue<T>(loader: () => Promise<T>) {
   const mounted = useRef(false);
   const requestId = useRef(0);
 
-  const reload = useCallback(async (): Promise<unknown | undefined> => {
+  const reload = useCallback(async (): Promise<ReloadResult<T>> => {
     const currentRequest = ++requestId.current;
     setState((current) => ({ ...current, error: undefined, isLoading: true }));
     try {
       const value = await loader();
       if (mounted.current && currentRequest === requestId.current) {
         setState({ isLoading: false, value });
+        return { kind: "success", value };
       }
-      return undefined;
+      return { kind: "stale" };
     } catch (error) {
       if (mounted.current && currentRequest === requestId.current) {
         setState((current) => ({ ...current, error, isLoading: false }));
-        return error;
+        return { kind: "failure", error };
       }
-      return undefined;
+      return { kind: "stale" };
     }
   }, [loader]);
 
@@ -145,11 +163,15 @@ function localTaskSubtitle(task: GroundcrewStatusTask): string {
 }
 
 function LocalTaskRow({
+  canonicalTasks,
   inventory,
+  lifecycleController,
   onRefresh,
   task,
 }: {
+  canonicalTasks: readonly GroundcrewTask[];
   inventory: GroundcrewStatusInventory;
+  lifecycleController: LifecycleActionController;
   onRefresh: () => Promise<void>;
   task: GroundcrewStatusTask;
 }) {
@@ -172,18 +194,30 @@ function LocalTaskRow({
         { text: task.agent ?? task.source?.agent ?? "Agent unavailable", icon: Icon.Person },
         { tag: { value: state, color: localTaskColor(task) } },
       ]}
-      actions={<TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />}
+      actions={
+        <TaskRowActions
+          inventory={inventory}
+          selection={selection}
+          onRefresh={onRefresh}
+          canonicalTasks={canonicalTasks}
+          lifecycleController={lifecycleController}
+        />
+      }
     />
   );
 }
 
 function MissingWorkspaceRow({
+  canonicalTasks,
   inventory,
   issue,
+  lifecycleController,
   onRefresh,
 }: {
+  canonicalTasks: readonly GroundcrewTask[];
   inventory: GroundcrewStatusInventory;
   issue: GroundcrewStatusBoardIssue;
+  lifecycleController: LifecycleActionController;
   onRefresh: () => Promise<void>;
 }) {
   const selection: StatusTaskSelection = { kind: "missing", task: issue };
@@ -200,18 +234,30 @@ function MissingWorkspaceRow({
         { text: issue.agent ?? "Agent unavailable", icon: Icon.Person },
         { tag: { value: "Missing Workspace", color: Color.Red } },
       ]}
-      actions={<TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />}
+      actions={
+        <TaskRowActions
+          inventory={inventory}
+          selection={selection}
+          onRefresh={onRefresh}
+          canonicalTasks={canonicalTasks}
+          lifecycleController={lifecycleController}
+        />
+      }
     />
   );
 }
 
 function QueueReadyRow({
+  canonicalTasks,
   inventory,
   issue,
+  lifecycleController,
   onRefresh,
 }: {
+  canonicalTasks: readonly GroundcrewTask[];
   inventory: GroundcrewStatusInventory;
   issue: GroundcrewStatusQueueIssue;
+  lifecycleController: LifecycleActionController;
   onRefresh: () => Promise<void>;
 }) {
   const selection: StatusTaskSelection = { kind: "ready", task: issue };
@@ -226,18 +272,30 @@ function QueueReadyRow({
         { text: issue.agent, icon: Icon.Person },
         { tag: { value: "Ready", color: Color.Blue } },
       ]}
-      actions={<TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />}
+      actions={
+        <TaskRowActions
+          inventory={inventory}
+          selection={selection}
+          onRefresh={onRefresh}
+          canonicalTasks={canonicalTasks}
+          lifecycleController={lifecycleController}
+        />
+      }
     />
   );
 }
 
 function QueueBlockedRow({
+  canonicalTasks,
   inventory,
   issue,
+  lifecycleController,
   onRefresh,
 }: {
+  canonicalTasks: readonly GroundcrewTask[];
   inventory: GroundcrewStatusInventory;
   issue: GroundcrewStatusBlockedIssue;
+  lifecycleController: LifecycleActionController;
   onRefresh: () => Promise<void>;
 }) {
   const selection: StatusTaskSelection = { kind: "blocked", task: issue };
@@ -258,7 +316,15 @@ function QueueBlockedRow({
         { text: issue.agent, icon: Icon.Person },
         { tag: { value: `Blocked (${issue.blockedBy.length})`, color: Color.Red } },
       ]}
-      actions={<TaskRowActions inventory={inventory} selection={selection} onRefresh={onRefresh} />}
+      actions={
+        <TaskRowActions
+          inventory={inventory}
+          selection={selection}
+          onRefresh={onRefresh}
+          canonicalTasks={canonicalTasks}
+          lifecycleController={lifecycleController}
+        />
+      }
     />
   );
 }
@@ -371,11 +437,7 @@ function OrphanedSessionsRow({
   );
 }
 
-type StatusTaskSelection =
-  | { kind: "local"; task: GroundcrewStatusTask }
-  | { kind: "missing"; task: GroundcrewStatusBoardIssue }
-  | { kind: "ready"; task: GroundcrewStatusQueueIssue }
-  | { kind: "blocked"; task: GroundcrewStatusBlockedIssue };
+type StatusTaskSelection = LifecycleTaskSelection;
 
 function findStatusTask({
   inventory,
@@ -384,23 +446,7 @@ function findStatusTask({
   inventory: GroundcrewStatusInventory;
   naturalTaskId: string;
 }): StatusTaskSelection | undefined {
-  const target = naturalTaskId.toLowerCase();
-  const local = inventory.tasks.find((task) => task.task.toLowerCase() === target);
-  if (local !== undefined) {
-    return { kind: "local", task: local };
-  }
-  const missing = inventory.inProgressWithoutWorktree.find(
-    (task) => task.naturalId.toLowerCase() === target,
-  );
-  if (missing !== undefined) {
-    return { kind: "missing", task: missing };
-  }
-  const ready = inventory.queueReady.find((task) => task.naturalId.toLowerCase() === target);
-  if (ready !== undefined) {
-    return { kind: "ready", task: ready };
-  }
-  const blocked = inventory.queueBlocked.find((task) => task.naturalId.toLowerCase() === target);
-  return blocked === undefined ? undefined : { kind: "blocked", task: blocked };
+  return findLifecycleTask(inventory, naturalTaskId);
 }
 
 function canonicalStatusTitle(status: string): string {
@@ -647,16 +693,26 @@ function HealthRowActions({ onRefresh }: { onRefresh: () => Promise<void> }) {
 }
 
 function TaskRowActions({
+  canonicalTasks,
   inventory,
+  lifecycleController,
   onRefresh,
   selection,
 }: {
+  canonicalTasks: readonly GroundcrewTask[];
   inventory: GroundcrewStatusInventory;
+  lifecycleController: LifecycleActionController;
   onRefresh: () => Promise<void>;
   selection: StatusTaskSelection;
 }) {
   return (
     <ActionPanel>
+      <LifecycleActions
+        controller={lifecycleController}
+        taskId={selectionNaturalTaskId(selection)}
+        task={findCanonicalTask(canonicalTasks, selectionNaturalTaskId(selection))}
+        status={selection}
+      />
       <Action.Push
         title="Show Task Details"
         icon={Icon.Sidebar}
@@ -798,15 +854,33 @@ function StatusActions({
   );
 }
 
-export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
+export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDashboardProps) {
   const { error, isLoading, reload, value: inventory } = useAsyncValue(loadStatus);
+  const { reload: reloadTasks, value: canonicalTasks } = useAsyncValue(loadTasks);
+  const reconcile = useCallback(
+    async (taskId: string) => {
+      const [statusResult, taskResult] = await Promise.all([reload(), reloadTasks()]);
+      return {
+        statusRefreshed: statusResult.kind === "success",
+        ...(statusResult.kind === "success"
+          ? { status: findLifecycleTask(statusResult.value, taskId) }
+          : {}),
+        taskRefreshed: taskResult.kind === "success",
+        ...(taskResult.kind === "success"
+          ? { task: findCanonicalTask(taskResult.value, taskId) }
+          : {}),
+      };
+    },
+    [reload, reloadTasks],
+  );
+  const lifecycleController = useLifecycleActionController({ mutations, reconcile });
   const refresh = useCallback(async () => {
-    const refreshError = await reload();
-    if (refreshError !== undefined) {
+    const result = await reload();
+    if (result.kind === "failure") {
       await showToast({
         style: Toast.Style.Failure,
         title: "Couldn’t Refresh Groundcrew Status",
-        message: errorMessage(refreshError),
+        message: errorMessage(result.error),
       });
     }
   }, [reload]);
@@ -864,14 +938,28 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
       {inventory !== undefined && activeTasks.length > 0 ? (
         <List.Section title="Active Workspaces" subtitle={`${activeTasks.length}`}>
           {activeTasks.map((task) => (
-            <LocalTaskRow key={task.task} task={task} inventory={inventory} onRefresh={refresh} />
+            <LocalTaskRow
+              key={task.task}
+              task={task}
+              inventory={inventory}
+              onRefresh={refresh}
+              canonicalTasks={canonicalTasks ?? []}
+              lifecycleController={lifecycleController}
+            />
           ))}
         </List.Section>
       ) : null}
       {inventory !== undefined && preservedTasks.length > 0 ? (
         <List.Section title="Preserved Workspaces" subtitle={`${preservedTasks.length}`}>
           {preservedTasks.map((task) => (
-            <LocalTaskRow key={task.task} task={task} inventory={inventory} onRefresh={refresh} />
+            <LocalTaskRow
+              key={task.task}
+              task={task}
+              inventory={inventory}
+              onRefresh={refresh}
+              canonicalTasks={canonicalTasks ?? []}
+              lifecycleController={lifecycleController}
+            />
           ))}
         </List.Section>
       ) : null}
@@ -882,7 +970,14 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
           subtitle={`${missingLocalTasks.length + inventory.inProgressWithoutWorktree.length}`}
         >
           {missingLocalTasks.map((task) => (
-            <LocalTaskRow key={task.task} task={task} inventory={inventory} onRefresh={refresh} />
+            <LocalTaskRow
+              key={task.task}
+              task={task}
+              inventory={inventory}
+              onRefresh={refresh}
+              canonicalTasks={canonicalTasks ?? []}
+              lifecycleController={lifecycleController}
+            />
           ))}
           {inventory.inProgressWithoutWorktree.map((issue) => (
             <MissingWorkspaceRow
@@ -890,6 +985,8 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
               issue={issue}
               inventory={inventory}
               onRefresh={refresh}
+              canonicalTasks={canonicalTasks ?? []}
+              lifecycleController={lifecycleController}
             />
           ))}
         </List.Section>
@@ -901,7 +998,14 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
         >
           <SlotHealthRow inventory={inventory} onRefresh={refresh} />
           {inventory.queueReady.map((issue) => (
-            <QueueReadyRow key={issue.id} issue={issue} inventory={inventory} onRefresh={refresh} />
+            <QueueReadyRow
+              key={issue.id}
+              issue={issue}
+              inventory={inventory}
+              onRefresh={refresh}
+              canonicalTasks={canonicalTasks ?? []}
+              lifecycleController={lifecycleController}
+            />
           ))}
           {inventory.queueBlocked.map((issue) => (
             <QueueBlockedRow
@@ -909,6 +1013,8 @@ export function StatusDashboard({ loadStatus }: StatusDashboardProps) {
               issue={issue}
               inventory={inventory}
               onRefresh={refresh}
+              canonicalTasks={canonicalTasks ?? []}
+              lifecycleController={lifecycleController}
             />
           ))}
         </List.Section>

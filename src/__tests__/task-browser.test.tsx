@@ -7,7 +7,8 @@ import taskDetailFixture from "./fixtures/task-detail.json";
 import taskListFixture from "./fixtures/task-list.json";
 import { GroundcrewClientError } from "../cli";
 import { TaskBrowser, TaskDetail } from "../components/task-browser";
-import type { GroundcrewTask } from "../types/groundcrew";
+import type { LifecycleMutations } from "../components/lifecycle-actions";
+import type { GroundcrewStatusInventory, GroundcrewTask } from "../types/groundcrew";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -40,11 +41,17 @@ vi.mock("@raycast/api", () => {
   const Action = Object.assign(mockComponent("raycast-action"), {
     OpenInBrowser: mockComponent("raycast-action-open-in-browser"),
     Push: mockComponent("raycast-action-push"),
+    Style: { Destructive: "destructive" },
+    SubmitForm: mockComponent("raycast-action-submit-form"),
+  });
+  const Form = Object.assign(mockComponent("raycast-form", ["actions"]), {
+    TextArea: mockComponent("raycast-form-text-area"),
   });
 
   return {
     Action,
     ActionPanel: mockComponent("raycast-action-panel"),
+    Alert: { ActionStyle: { Destructive: "destructive" } },
     Color: {
       Blue: "blue",
       Green: "green",
@@ -54,17 +61,105 @@ vi.mock("@raycast/api", () => {
       Yellow: "yellow",
     },
     Detail,
+    Form,
     Icon: new Proxy({}, { get: (_target, property) => String(property) }),
     Keyboard: { Shortcut: { Common: { Refresh: { modifiers: ["cmd"], key: "r" } } } },
     List,
     openExtensionPreferences: vi.fn(),
+    confirmAlert: vi.fn(),
     showToast: vi.fn(),
-    Toast: { Style: { Failure: "failure" } },
+    Toast: { Style: { Animated: "animated", Failure: "failure", Success: "success" } },
+    useNavigation: () => ({ pop: vi.fn() }),
   };
 });
 
 const tasks = taskListFixture as GroundcrewTask[];
 const taskDetail = taskDetailFixture as GroundcrewTask;
+
+const lifecycleInventory: GroundcrewStatusInventory = {
+  schemaVersion: 1,
+  localCapturedAt: "2026-08-20T09:00:00.000Z",
+  remote: {
+    capturedAt: "2026-08-20T09:00:01.000Z",
+    lastAttemptAt: "2026-08-20T09:00:01.000Z",
+    lastAttemptStatus: "ok",
+  },
+  maximumInProgress: 3,
+  workspaceProbe: { status: "ok" },
+  orphanedSessions: [],
+  tasks: [
+    {
+      task: "run-42",
+      lifecycle: "running",
+      flags: [],
+      session: "live",
+      worktrees: [],
+      recentLogLines: [],
+      source: {
+        id: "queue:RUN-42",
+        naturalId: "run-42",
+        title: "Run active implementation",
+        status: "in-progress",
+      },
+    },
+    {
+      task: "rev-7",
+      lifecycle: "interrupted",
+      flags: [],
+      session: "not-live",
+      worktrees: [
+        {
+          repository: "groundcrew-raycast",
+          kind: "host",
+          dir: "/work/rev-7",
+          branch: "review-rev-7",
+          git: { kind: "clean" },
+          pullRequests: [],
+        },
+      ],
+      recentLogLines: [],
+      source: {
+        id: "tracker:REV-7",
+        naturalId: "rev-7",
+        title: "Review task browser",
+        status: "in-review",
+      },
+    },
+  ],
+  inProgressWithoutWorktree: [],
+  queueReady: [
+    {
+      id: "tracker:TEM-3895",
+      naturalId: "tem-3895",
+      title: "Build the Groundcrew task browser",
+      repository: "ClipboardHealth/groundcrew-raycast",
+      agent: "codex",
+    },
+  ],
+  queueBlocked: [],
+  slots: { used: 1, maximum: 3 },
+};
+
+function lifecycleMutations(overrides: Partial<LifecycleMutations> = {}): LifecycleMutations {
+  const success = async () => ({
+    kind: "success" as const,
+    exitCode: 0 as const,
+    stdout: "",
+    stderr: "",
+  });
+  return {
+    startTask: success,
+    stopTask: success,
+    resumeTask: success,
+    cleanupTask: success,
+    ...overrides,
+  };
+}
+
+const defaultLifecycleProps = {
+  loadStatus: async () => lifecycleInventory,
+  mutations: lifecycleMutations(),
+};
 
 function findByType(renderer: ReactTestRenderer, type: string): ReactTestInstance[] {
   return renderer.root.findAll((node) => node.type === type);
@@ -87,6 +182,63 @@ beforeEach(() => {
 });
 
 describe("TaskBrowser", () => {
+  it("offers lifecycle actions and reconciles through full task and status refreshes", async () => {
+    vi.mocked(showToast).mockResolvedValue({} as never);
+    const loadTasks = vi.fn(async () => tasks);
+    const loadStatus = vi.fn(async () => lifecycleInventory);
+    const startTask = vi.fn<LifecycleMutations["startTask"]>().mockResolvedValue({
+      kind: "success",
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+    const renderer = await render(
+      <TaskBrowser
+        loadTasks={loadTasks}
+        loadTask={async () => taskDetail}
+        loadStatus={loadStatus}
+        mutations={lifecycleMutations({ startTask })}
+      />,
+    );
+
+    const ready = findByType(renderer, "raycast-list-item").find(
+      (item) => item.props.id === "tracker:TEM-3895",
+    );
+    expect(
+      ready?.findAll((node) => node.type === "raycast-action").map((action) => action.props.title),
+    ).toContain("Start Task");
+    const active = findByType(renderer, "raycast-list-item").find(
+      (item) => item.props.id === "queue:RUN-42",
+    );
+    expect(
+      active
+        ?.findAll((node) => node.type === "raycast-action-push")
+        .map((action) => action.props.title),
+    ).toContain("Stop Task");
+    const preserved = findByType(renderer, "raycast-list-item").find(
+      (item) => item.props.id === "tracker:REV-7",
+    );
+    expect(
+      preserved
+        ?.findAll((node) => node.type === "raycast-action")
+        .map((action) => action.props.title),
+    ).toEqual(expect.arrayContaining(["Resume Task", "Cleanup Task"]));
+
+    const start = ready
+      ?.findAll((node) => node.type === "raycast-action")
+      .find((action) => action.props.title === "Start Task");
+    await act(async () => {
+      await start?.props.onAction();
+    });
+
+    expect(startTask).toHaveBeenCalledWith(
+      "tracker:TEM-3895",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(loadTasks).toHaveBeenCalledTimes(2);
+    expect(loadStatus.mock.calls).toEqual([[], []]);
+  });
+
   it("shows loading, then source-neutral grouped rows with search fields and canonical filters", async () => {
     let resolveTasks: ((value: GroundcrewTask[]) => void) | undefined;
     const loadTasks = vi.fn(
@@ -96,7 +248,11 @@ describe("TaskBrowser", () => {
         }),
     );
     const renderer = await render(
-      <TaskBrowser loadTasks={loadTasks} loadTask={async () => taskDetail} />,
+      <TaskBrowser
+        {...defaultLifecycleProps}
+        loadTasks={loadTasks}
+        loadTask={async () => taskDetail}
+      />,
     );
 
     expect(findByType(renderer, "raycast-list")[0]?.props.isLoading).toBe(true);
@@ -156,7 +312,11 @@ describe("TaskBrowser", () => {
         new GroundcrewClientError("COMMAND_FAILED", "crew task list --json exited with code 1."),
       );
     const renderer = await render(
-      <TaskBrowser loadTasks={loadTasks} loadTask={async () => taskDetail} />,
+      <TaskBrowser
+        {...defaultLifecycleProps}
+        loadTasks={loadTasks}
+        loadTask={async () => taskDetail}
+      />,
     );
 
     expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe(
@@ -176,6 +336,7 @@ describe("TaskBrowser", () => {
 
     const setupRenderer = await render(
       <TaskBrowser
+        {...defaultLifecycleProps}
         loadTasks={async () => {
           throw new GroundcrewClientError(
             "EXECUTABLE_NOT_FOUND",
@@ -191,6 +352,7 @@ describe("TaskBrowser", () => {
 
     const incompatibleRenderer = await render(
       <TaskBrowser
+        {...defaultLifecycleProps}
         loadTasks={async () => {
           throw new GroundcrewClientError(
             "INCOMPATIBLE_VERSION",
@@ -225,7 +387,11 @@ describe("TaskBrowser", () => {
           }),
       );
     const renderer = await render(
-      <TaskBrowser loadTasks={loadTasks} loadTask={async () => taskDetail} />,
+      <TaskBrowser
+        {...defaultLifecycleProps}
+        loadTasks={loadTasks}
+        loadTask={async () => taskDetail}
+      />,
     );
     const refresh = findByType(renderer, "raycast-action").find(
       (action) => action.props.title === "Refresh Tasks",
