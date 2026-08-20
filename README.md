@@ -14,11 +14,12 @@ Browse Groundcrew tasks and check Groundcrew status without leaving Raycast.
 
 ## Commands
 
-- **Browse Groundcrew Tasks** — opens the task browser placeholder
+- **Browse Groundcrew Tasks** — searches and filters canonical tasks from every configured Groundcrew source, with
+  on-demand task details and links
 - **Groundcrew Status** — opens the status placeholder
 
-The command views are scaffolded in this ticket. Groundcrew CLI integration and feature behavior will be added in
-follow-up work.
+Task browsing reads through `crew task list --json` and `crew task get <task> --json`. Groundcrew remains responsible
+for source configuration and canonical task fields; the extension does not contact providers directly.
 
 ## Configuration
 
