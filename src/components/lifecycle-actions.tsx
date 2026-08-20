@@ -117,6 +117,7 @@ export function findCanonicalTask(
 export function findLifecycleTask(
   inventory: GroundcrewStatusInventory,
   taskId: string,
+  canonicalTasks?: readonly GroundcrewTask[],
 ): LifecycleTaskSelection | undefined {
   const selections: LifecycleTaskSelection[] = [
     ...inventory.tasks.map((task): LifecycleTaskSelection => ({ kind: "local", task })),
@@ -137,7 +138,18 @@ export function findLifecycleTask(
     const naturalId = selection.kind === "local" ? selection.task.task : selection.task.naturalId;
     return normalizedTaskId(naturalId) === normalized;
   });
-  return matches.length === 1 ? matches[0] : undefined;
+  if (matches.length === 1) {
+    return matches[0];
+  }
+  if (!isCanonicalTaskId(normalized) || matches.length > 0 || canonicalTasks === undefined) {
+    return undefined;
+  }
+  const canonicalTask = findCanonicalTask(canonicalTasks, normalized);
+  const uniqueNaturalTask = findCanonicalTask(canonicalTasks, naturalTaskId(normalized));
+  if (canonicalTask === undefined || uniqueNaturalTask?.id !== canonicalTask.id) {
+    return undefined;
+  }
+  return findLifecycleTask(inventory, naturalTaskId(normalized));
 }
 
 export function getLifecycleAvailability(

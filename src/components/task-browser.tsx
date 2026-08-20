@@ -477,7 +477,13 @@ export function TaskBrowser({ loadTasks, loadTask, loadStatus, mutations }: Task
           : {}),
         statusRefreshed: statusResult.kind === "success",
         ...(statusResult.kind === "success"
-          ? { status: findLifecycleTask(statusResult.value, taskId) }
+          ? {
+              status: findLifecycleTask(
+                statusResult.value,
+                taskId,
+                taskResult.kind === "success" ? taskResult.value : undefined,
+              ),
+            }
           : {}),
       };
     },
@@ -530,7 +536,7 @@ export function TaskBrowser({ loadTasks, loadTask, loadStatus, mutations }: Task
               loadTask={loadTask}
               onRefresh={refresh}
               controller={lifecycleController}
-              status={status === undefined ? undefined : findLifecycleTask(status, task.id)}
+              status={status === undefined ? undefined : findLifecycleTask(status, task.id, tasks)}
             />
           ))}
         </List.Section>

@@ -239,6 +239,40 @@ describe("TaskBrowser", () => {
     expect(loadStatus.mock.calls).toEqual([[], []]);
   });
 
+  it("offers local lifecycle actions when degraded status omits an unambiguous source", async () => {
+    const activeTask = lifecycleInventory.tasks[0];
+    if (activeTask === undefined) {
+      throw new Error("Expected an active fixture.");
+    }
+    const degradedInventory: GroundcrewStatusInventory = {
+      ...lifecycleInventory,
+      remote: {
+        ...lifecycleInventory.remote,
+        lastAttemptStatus: "unavailable",
+        lastAttemptError: "provider unavailable",
+      },
+      tasks: [{ ...activeTask, source: undefined }],
+      queueReady: [],
+    };
+    const renderer = await render(
+      <TaskBrowser
+        loadTasks={async () => tasks}
+        loadTask={async () => taskDetail}
+        loadStatus={async () => degradedInventory}
+        mutations={lifecycleMutations()}
+      />,
+    );
+
+    const active = findByType(renderer, "raycast-list-item").find(
+      (item) => item.props.id === "queue:RUN-42",
+    );
+    expect(
+      active
+        ?.findAll((node) => node.type === "raycast-action-push")
+        .map((action) => action.props.title),
+    ).toContain("Stop Task");
+  });
+
   it("shows loading, then source-neutral grouped rows with search fields and canonical filters", async () => {
     let resolveTasks: ((value: GroundcrewTask[]) => void) | undefined;
     const loadTasks = vi.fn(

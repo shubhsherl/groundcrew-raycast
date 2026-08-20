@@ -221,6 +221,21 @@ describe("lifecycle action availability", () => {
     expect(findCanonicalTask(tasks, "linear:tem-3897")?.source).toBe("linear");
     expect(findCanonicalTask(tasks, "tem-3897")).toBeUndefined();
   });
+
+  it("uses a source-less local status only when the canonical natural id is unique", () => {
+    const inventory = statusInventory([localTask({ source: undefined })]);
+    const collidingTasks = [
+      canonicalTask,
+      { ...canonicalTask, id: "jira:tem-3897", source: "jira" },
+    ];
+
+    expect(findLifecycleTask(inventory, canonicalTask.id)).toBeUndefined();
+    expect(findLifecycleTask(inventory, canonicalTask.id, [canonicalTask])).toMatchObject({
+      kind: "local",
+      task: { task: "tem-3897" },
+    });
+    expect(findLifecycleTask(inventory, canonicalTask.id, collidingTasks)).toBeUndefined();
+  });
 });
 
 describe("lifecycle mutation feedback", () => {
