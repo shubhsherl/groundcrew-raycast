@@ -341,6 +341,20 @@ describe("legacy status adapter", () => {
 
     await expect(client.getStatus()).rejects.toMatchObject({ code: "STATUS_SCHEMA_MISMATCH" });
   });
+
+  it("rejects a blank natural task ID before loading status", async () => {
+    const root = await makeTemporaryDirectory();
+    const fake = await makeFakeCrew(root, {
+      [responseKey("--version")]: { stdout: `${MINIMUM_GROUNDCREW_VERSION}\n` },
+    });
+    const client = await createGroundcrewClient({
+      executablePath: fake.executablePath,
+      environment: fake.environment,
+    });
+
+    await expect(client.getStatus("   ")).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    await expect(readArgvLog(fake.logPath)).resolves.toEqual([["--version"]]);
+  });
 });
 
 describe("lifecycle process results", () => {

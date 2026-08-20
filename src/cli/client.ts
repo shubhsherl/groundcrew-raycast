@@ -126,16 +126,16 @@ class InstalledGroundcrewClient implements GroundcrewClient {
   }
 
   public async getStatus(naturalTaskId?: string): Promise<GroundcrewStatusInventory> {
-    const inventory = parseLegacyStatusJson(await this.#runJson(["status", "--json"]));
-    if (naturalTaskId === undefined) {
-      return inventory;
-    }
-    const normalized = naturalTaskId.trim();
-    if (normalized.length === 0) {
+    const normalized = naturalTaskId?.trim();
+    if (naturalTaskId !== undefined && normalized?.length === 0) {
       throw new GroundcrewClientError(
         "INVALID_ARGUMENT",
         "Status filtering requires a non-empty natural task ID.",
       );
+    }
+    const inventory = parseLegacyStatusJson(await this.#runJson(["status", "--json"]));
+    if (normalized === undefined) {
+      return inventory;
     }
     return filterStatusByNaturalTaskId(inventory, normalized);
   }
