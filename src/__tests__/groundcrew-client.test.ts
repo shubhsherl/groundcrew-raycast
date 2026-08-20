@@ -342,6 +342,80 @@ describe("legacy status adapter", () => {
     await expect(client.getStatus()).rejects.toMatchObject({ code: "STATUS_SCHEMA_MISMATCH" });
   });
 
+  it("retains an older remote payload after an unavailable attempt and leaves empty PR results ambiguous", async () => {
+    const root = await makeTemporaryDirectory();
+    const degraded = structuredClone(legacyStatus);
+    degraded.remote.lastAttemptAt = "2026-08-20T09:00:00.000Z";
+    degraded.remote.lastAttemptStatus = "unavailable";
+    degraded.remote.lastAttemptError = "GitHub and board refresh timed out";
+    degraded.remote.payload.capturedAt = "2026-08-20T07:00:00.000Z";
+    degraded.remote.pullRequestsByWorktree["/work/groundcrew-raycast-tem-3894"] = [];
+    const fake = await makeFakeCrew(root, {
+      [responseKey("--version")]: { stdout: `${MINIMUM_GROUNDCREW_VERSION}\n` },
+      [responseKey("status", "--json")]: { stdout: JSON.stringify(degraded) },
+    });
+    const client = await createGroundcrewClient({
+      executablePath: fake.executablePath,
+      environment: fake.environment,
+    });
+
+    const status = await client.getStatus();
+
+    expect(status.remote).toEqual({
+      capturedAt: "2026-08-20T07:00:00.000Z",
+      lastAttemptAt: "2026-08-20T09:00:00.000Z",
+      lastAttemptStatus: "unavailable",
+      lastAttemptError: "GitHub and board refresh timed out",
+    });
+    expect(status.queueReady).toEqual([]);
+    expect(status.inProgressWithoutWorktree).toHaveLength(1);
+    expect(status.tasks[0]?.worktrees[0]?.pullRequests).toEqual([]);
+    expect(status.slots).toEqual({ used: 2, maximum: 3 });
+    await expect(readArgvLog(fake.logPath)).resolves.toEqual([["--version"], ["status", "--json"]]);
+  });
+
+  it("preserves local workspaces when an unavailable remote attempt has no payload", async () => {
+    const root = await makeTemporaryDirectory();
+    const unavailable = structuredClone(legacyStatus);
+    unavailable.remote.lastAttemptAt = "2026-08-20T09:30:00.000Z";
+    unavailable.remote.lastAttemptStatus = "unavailable";
+    unavailable.remote.lastAttemptError = "Board unavailable";
+    unavailable.remote.pullRequestsByWorktree = {};
+    const withoutPayload = {
+      ...unavailable,
+      remote: {
+        schemaVersion: unavailable.remote.schemaVersion,
+        lastAttemptAt: unavailable.remote.lastAttemptAt,
+        lastAttemptStatus: unavailable.remote.lastAttemptStatus,
+        lastAttemptError: unavailable.remote.lastAttemptError,
+        pullRequestsByWorktree: unavailable.remote.pullRequestsByWorktree,
+      },
+    };
+    const fake = await makeFakeCrew(root, {
+      [responseKey("--version")]: { stdout: `${MINIMUM_GROUNDCREW_VERSION}\n` },
+      [responseKey("status", "--json")]: { stdout: JSON.stringify(withoutPayload) },
+    });
+    const client = await createGroundcrewClient({
+      executablePath: fake.executablePath,
+      environment: fake.environment,
+    });
+
+    const status = await client.getStatus();
+
+    expect(status.tasks).toHaveLength(1);
+    expect(status.tasks[0]?.source).toBeUndefined();
+    expect(status.tasks[0]?.worktrees[0]?.pullRequests).toEqual([]);
+    expect(status.inProgressWithoutWorktree).toEqual([]);
+    expect(status.queueReady).toEqual([]);
+    expect(status.queueBlocked).toEqual([]);
+    expect(status.slots).toBeUndefined();
+    expect(status.remote).toEqual({
+      lastAttemptAt: "2026-08-20T09:30:00.000Z",
+      lastAttemptStatus: "unavailable",
+      lastAttemptError: "Board unavailable",
+    });
+  });
+
   it("rejects a blank natural task ID before loading status", async () => {
     const root = await makeTemporaryDirectory();
     const fake = await makeFakeCrew(root, {

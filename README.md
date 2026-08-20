@@ -16,10 +16,17 @@ Browse Groundcrew tasks and check Groundcrew status without leaving Raycast.
 
 - **Browse Groundcrew Tasks** — searches and filters canonical tasks from every configured Groundcrew source, with
   on-demand task details and links
-- **Groundcrew Status** — opens the status placeholder
+- **Groundcrew Status** — shows active and preserved workspaces, missing worktrees, queue and slot health, and degraded
+  local or remote probes
 
 Task browsing reads through `crew task list --json` and `crew task get <task> --json`. Groundcrew remains responsible
 for source configuration and canonical task fields; the extension does not contact providers directly.
+
+Status always loads the complete legacy `crew status --json` `{ local, remote }` inventory and filters task detail in
+the extension. It never invokes task-scoped status JSON. Local capture, remote attempt, and retained remote payload
+timestamps are shown separately because they can differ. When a remote attempt fails, an older payload can remain and
+is labeled as potentially stale. An empty pull-request result is treated as unknown because the legacy response cannot
+distinguish “no pull request” from a failed GitHub lookup; the extension creates PR actions only for supplied URLs.
 
 ## Configuration
 
