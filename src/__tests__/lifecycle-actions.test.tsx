@@ -4,6 +4,7 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from "rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  findCanonicalTask,
   findLifecycleTask,
   getLifecycleAvailability,
   LifecycleActions,
@@ -190,6 +191,35 @@ describe("lifecycle action availability", () => {
         findLifecycleTask(missingInventory, canonicalTask.id),
       ),
     ).toEqual({ cleanup: false, resume: false, start: false, stop: false });
+  });
+
+  it("keeps provider-qualified tasks distinct when natural ids collide", () => {
+    const inventory = statusInventory([
+      localTask(),
+      localTask({
+        source: {
+          id: "jira:tem-3897",
+          naturalId: "tem-3897",
+          title: canonicalTask.title,
+          repository: canonicalTask.repository,
+          agent: canonicalTask.agent,
+          status: canonicalTask.status,
+        },
+      }),
+    ]);
+    const tasks = [canonicalTask, { ...canonicalTask, id: "jira:tem-3897", source: "jira" }];
+
+    expect(findLifecycleTask(inventory, "linear:tem-3897")).toMatchObject({
+      kind: "local",
+      task: { source: { id: canonicalTask.id } },
+    });
+    expect(findLifecycleTask(inventory, "jira:tem-3897")).toMatchObject({
+      kind: "local",
+      task: { source: { id: "jira:tem-3897" } },
+    });
+    expect(findLifecycleTask(inventory, "tem-3897")).toBeUndefined();
+    expect(findCanonicalTask(tasks, "linear:tem-3897")?.source).toBe("linear");
+    expect(findCanonicalTask(tasks, "tem-3897")).toBeUndefined();
   });
 });
 
@@ -434,7 +464,7 @@ describe("lifecycle action inputs", () => {
     });
 
     expect(stopTask).toHaveBeenCalledWith(
-      canonicalTask.id,
+      "tem-3897",
       expect.objectContaining({ reason, signal: expect.any(AbortSignal) }),
     );
   });
@@ -495,7 +525,7 @@ describe("lifecycle action inputs", () => {
       }),
     );
     expect(cleanupTask).toHaveBeenCalledWith(
-      canonicalTask.id,
+      "tem-3897",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });

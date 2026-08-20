@@ -162,6 +162,10 @@ function localTaskSubtitle(task: GroundcrewStatusTask): string {
     : `${task.task} · ${repository} · ${branch}`;
 }
 
+function localTaskId(task: GroundcrewStatusTask): string {
+  return task.source?.id ?? task.task;
+}
+
 function LocalTaskRow({
   canonicalTasks,
   inventory,
@@ -179,7 +183,7 @@ function LocalTaskRow({
   const selection: StatusTaskSelection = { kind: "local", task };
   return (
     <List.Item
-      id={`local:${task.task}`}
+      id={`local:${localTaskId(task)}`}
       title={task.title ?? task.source?.title ?? task.task}
       subtitle={localTaskSubtitle(task)}
       icon={{ source: localTaskIcon(task), tintColor: localTaskColor(task) }}
@@ -223,7 +227,7 @@ function MissingWorkspaceRow({
   const selection: StatusTaskSelection = { kind: "missing", task: issue };
   return (
     <List.Item
-      id={`remote-missing:${issue.naturalId}`}
+      id={`remote-missing:${issue.id}`}
       title={issue.title}
       subtitle={`${issue.naturalId} · ${issue.repository ?? "Repository unavailable"}`}
       icon={{ source: Icon.XMarkCircle, tintColor: Color.Red }}
@@ -263,7 +267,7 @@ function QueueReadyRow({
   const selection: StatusTaskSelection = { kind: "ready", task: issue };
   return (
     <List.Item
-      id={`queue-ready:${issue.naturalId}`}
+      id={`queue-ready:${issue.id}`}
       title={issue.title}
       subtitle={`${issue.naturalId} · ${issue.repository}`}
       icon={{ source: Icon.CircleProgress, tintColor: Color.Blue }}
@@ -301,7 +305,7 @@ function QueueBlockedRow({
   const selection: StatusTaskSelection = { kind: "blocked", task: issue };
   return (
     <List.Item
-      id={`queue-blocked:${issue.naturalId}`}
+      id={`queue-blocked:${issue.id}`}
       title={issue.title}
       subtitle={`${issue.naturalId} · ${issue.repository}`}
       icon={{ source: Icon.ExclamationMark, tintColor: Color.Red }}
@@ -458,6 +462,10 @@ function canonicalStatusTitle(status: string): string {
 
 function selectionNaturalTaskId(selection: StatusTaskSelection): string {
   return selection.kind === "local" ? selection.task.task : selection.task.naturalId;
+}
+
+function selectionTaskId(selection: StatusTaskSelection): string {
+  return selection.kind === "local" ? localTaskId(selection.task) : selection.task.id;
 }
 
 function selectionTitle(selection: StatusTaskSelection): string {
@@ -709,18 +717,15 @@ function TaskRowActions({
     <ActionPanel>
       <LifecycleActions
         controller={lifecycleController}
-        taskId={selectionNaturalTaskId(selection)}
-        task={findCanonicalTask(canonicalTasks, selectionNaturalTaskId(selection))}
+        taskId={selectionTaskId(selection)}
+        task={findCanonicalTask(canonicalTasks, selectionTaskId(selection))}
         status={selection}
       />
       <Action.Push
         title="Show Task Details"
         icon={Icon.Sidebar}
         target={
-          <StatusTaskDetail
-            inventory={inventory}
-            naturalTaskId={selectionNaturalTaskId(selection)}
-          />
+          <StatusTaskDetail inventory={inventory} naturalTaskId={selectionTaskId(selection)} />
         }
       />
       <TaskResourceActions selection={selection} />
@@ -939,7 +944,7 @@ export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDash
         <List.Section title="Active Workspaces" subtitle={`${activeTasks.length}`}>
           {activeTasks.map((task) => (
             <LocalTaskRow
-              key={task.task}
+              key={localTaskId(task)}
               task={task}
               inventory={inventory}
               onRefresh={refresh}
@@ -953,7 +958,7 @@ export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDash
         <List.Section title="Preserved Workspaces" subtitle={`${preservedTasks.length}`}>
           {preservedTasks.map((task) => (
             <LocalTaskRow
-              key={task.task}
+              key={localTaskId(task)}
               task={task}
               inventory={inventory}
               onRefresh={refresh}
@@ -971,7 +976,7 @@ export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDash
         >
           {missingLocalTasks.map((task) => (
             <LocalTaskRow
-              key={task.task}
+              key={localTaskId(task)}
               task={task}
               inventory={inventory}
               onRefresh={refresh}

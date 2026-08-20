@@ -309,7 +309,7 @@ describe("StatusDashboard", () => {
     );
 
     const active = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "local:tem-3896",
+      (item) => item.props.id === "local:linear:tem-3896",
     );
     expect(
       active
@@ -325,7 +325,7 @@ describe("StatusDashboard", () => {
         .map((action) => action.props.title),
     ).toEqual(expect.arrayContaining(["Resume Task", "Cleanup Task"]));
     const ready = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "queue-ready:tem-3905",
+      (item) => item.props.id === "queue-ready:linear:tem-3905",
     );
     const start = ready
       ?.findAll((node) => node.type === "raycast-action")
@@ -337,11 +337,58 @@ describe("StatusDashboard", () => {
     });
 
     expect(startTask).toHaveBeenCalledWith(
-      "tem-3905",
+      "linear:tem-3905",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(loadStatus.mock.calls).toEqual([[], []]);
     expect(loadTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps same-natural-id provider rows and actions distinct", async () => {
+    const linearReady = inventory.queueReady[0];
+    if (linearReady === undefined) {
+      throw new Error("Expected a ready fixture.");
+    }
+    const collidingInventory: GroundcrewStatusInventory = {
+      ...inventory,
+      tasks: [],
+      inProgressWithoutWorktree: [],
+      queueReady: [linearReady, { ...linearReady, id: "jira:tem-3905", title: "Jira task" }],
+      queueBlocked: [],
+      orphanedSessions: [],
+    };
+    const startTask = vi.fn<LifecycleMutations["startTask"]>().mockResolvedValue({
+      kind: "success",
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+    vi.mocked(showToast).mockResolvedValue({} as never);
+    const renderer = await render(
+      <StatusDashboard
+        loadStatus={async () => collidingInventory}
+        loadTasks={async () => []}
+        mutations={lifecycleMutations({ startTask })}
+      />,
+    );
+
+    const providerRows = findByType(renderer, "raycast-list-item").filter((item) =>
+      String(item.props.id).startsWith("queue-ready:"),
+    );
+    expect(providerRows.map((item) => item.props.id)).toEqual([
+      "queue-ready:linear:tem-3905",
+      "queue-ready:jira:tem-3905",
+    ]);
+    const jiraStart = providerRows[1]
+      ?.findAll((node) => node.type === "raycast-action")
+      .find((action) => action.props.title === "Start Task");
+    await act(async () => {
+      await jiraStart?.props.onAction();
+    });
+    expect(startTask).toHaveBeenCalledWith(
+      "jira:tem-3905",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("shows loading and then orders active and preserved workspaces before queue and degraded health", async () => {
@@ -376,21 +423,21 @@ describe("StatusDashboard", () => {
       "Degraded Probes",
     ]);
     expect(findByType(renderer, "raycast-list-item").map((item) => item.props.id)).toEqual([
-      "local:tem-3896",
+      "local:linear:tem-3896",
       "local:tem-3900",
       "local:tem-3901",
       "local:tem-3902",
       "local:tem-3903",
-      "remote-missing:tem-3904",
+      "remote-missing:linear:tem-3904",
       "slot-health",
-      "queue-ready:tem-3905",
-      "queue-blocked:tem-3906",
+      "queue-ready:linear:tem-3905",
+      "queue-blocked:linear:tem-3906",
       "remote-health",
       "workspace-probe",
       "orphaned-sessions",
     ]);
     const activeTask = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "local:tem-3896",
+      (item) => item.props.id === "local:linear:tem-3896",
     );
     expect(
       activeTask
@@ -441,7 +488,7 @@ describe("StatusDashboard", () => {
         ]),
     );
     expect(lifecycleByTask).toMatchObject({
-      "local:tem-3896": "Running",
+      "local:linear:tem-3896": "Running",
       "local:tem-3900": "Resumed",
       "local:tem-3901": "Interrupted",
       "local:tem-3902": "Exited",

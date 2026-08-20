@@ -38,7 +38,11 @@ export interface LifecycleReconciliation {
 
 export interface LifecycleActionController {
   isMutating: (taskId: string) => boolean;
-  run: (action: LifecycleAction, taskId: string, reason?: string) => Promise<void>;
+  run: (
+    action: LifecycleAction,
+    taskId: string,
+    options?: { reason?: string; targetTaskId?: string },
+  ) => Promise<void>;
 }
 
 export type LifecycleTaskSelection =
@@ -84,52 +88,56 @@ const ACTION_PRESENTATION: Record<
   },
 };
 
-function taskIdForms(taskId: string): Set<string> {
-  const normalized = taskId.trim().toLowerCase();
-  const separator = normalized.lastIndexOf(":");
-  return new Set([normalized, separator < 0 ? normalized : normalized.slice(separator + 1)]);
+function normalizedTaskId(taskId: string): string {
+  return taskId.trim().toLowerCase();
 }
 
-function taskIdsMatch(left: string, right: string): boolean {
-  const leftForms = taskIdForms(left);
-  return [...taskIdForms(right)].some((candidate) => leftForms.has(candidate));
+function isCanonicalTaskId(taskId: string): boolean {
+  return taskId.includes(":");
+}
+
+function naturalTaskId(taskId: string): string {
+  const normalized = normalizedTaskId(taskId);
+  const separator = normalized.indexOf(":");
+  return separator < 0 ? normalized : normalized.slice(separator + 1);
 }
 
 export function findCanonicalTask(
   tasks: readonly GroundcrewTask[],
   taskId: string,
 ): GroundcrewTask | undefined {
-  return tasks.find((task) => taskIdsMatch(task.id, taskId));
+  const normalized = normalizedTaskId(taskId);
+  if (isCanonicalTaskId(normalized)) {
+    return tasks.find((task) => normalizedTaskId(task.id) === normalized);
+  }
+  const matches = tasks.filter((task) => naturalTaskId(task.id) === normalized);
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 export function findLifecycleTask(
   inventory: GroundcrewStatusInventory,
   taskId: string,
 ): LifecycleTaskSelection | undefined {
-  const local = inventory.tasks.find(
-    (task) =>
-      taskIdsMatch(task.task, taskId) ||
-      (task.source !== undefined && taskIdsMatch(task.source.id, taskId)),
-  );
-  if (local !== undefined) {
-    return { kind: "local", task: local };
-  }
-  const missing = inventory.inProgressWithoutWorktree.find(
-    (task) => taskIdsMatch(task.id, taskId) || taskIdsMatch(task.naturalId, taskId),
-  );
-  if (missing !== undefined) {
-    return { kind: "missing", task: missing };
-  }
-  const ready = inventory.queueReady.find(
-    (task) => taskIdsMatch(task.id, taskId) || taskIdsMatch(task.naturalId, taskId),
-  );
-  if (ready !== undefined) {
-    return { kind: "ready", task: ready };
-  }
-  const blocked = inventory.queueBlocked.find(
-    (task) => taskIdsMatch(task.id, taskId) || taskIdsMatch(task.naturalId, taskId),
-  );
-  return blocked === undefined ? undefined : { kind: "blocked", task: blocked };
+  const selections: LifecycleTaskSelection[] = [
+    ...inventory.tasks.map((task): LifecycleTaskSelection => ({ kind: "local", task })),
+    ...inventory.inProgressWithoutWorktree.map((task): LifecycleTaskSelection => ({
+      kind: "missing",
+      task,
+    })),
+    ...inventory.queueReady.map((task): LifecycleTaskSelection => ({ kind: "ready", task })),
+    ...inventory.queueBlocked.map((task): LifecycleTaskSelection => ({ kind: "blocked", task })),
+  ];
+  const normalized = normalizedTaskId(taskId);
+  const matches = selections.filter((selection) => {
+    if (isCanonicalTaskId(normalized)) {
+      const canonicalId =
+        selection.kind === "local" ? selection.task.source?.id : selection.task.id;
+      return canonicalId !== undefined && normalizedTaskId(canonicalId) === normalized;
+    }
+    const naturalId = selection.kind === "local" ? selection.task.task : selection.task.naturalId;
+    return normalizedTaskId(naturalId) === normalized;
+  });
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 export function getLifecycleAvailability(
@@ -239,7 +247,11 @@ export function useLifecycleActionController({
 
   const isMutating = useCallback((taskId: string) => active.current.has(taskId), []);
   const run = useCallback(
-    async (action: LifecycleAction, taskId: string, reason?: string) => {
+    async (
+      action: LifecycleAction,
+      taskId: string,
+      options?: { reason?: string; targetTaskId?: string },
+    ) => {
       if (active.current.has(taskId)) {
         return;
       }
@@ -255,7 +267,13 @@ export function useLifecycleActionController({
 
       let result: GroundcrewLifecycleResult;
       try {
-        result = await invokeMutation({ action, controller, mutations, reason, taskId });
+        result = await invokeMutation({
+          action,
+          controller,
+          mutations,
+          reason: options?.reason,
+          taskId: options?.targetTaskId ?? taskId,
+        });
       } catch (error) {
         result = {
           kind: "launch-failure",
@@ -306,9 +324,11 @@ export function useLifecycleActionController({
 function StopTaskForm({
   controller,
   taskId,
+  targetTaskId,
 }: {
   controller: LifecycleActionController;
   taskId: string;
+  targetTaskId: string;
 }) {
   const { pop } = useNavigation();
   return (
@@ -324,11 +344,10 @@ function StopTaskForm({
               icon={Icon.Stop}
               onSubmit={async (values: { reason?: string }) => {
                 const reason = values.reason;
-                await controller.run(
-                  "stop",
-                  taskId,
-                  reason === undefined || reason.trim().length === 0 ? undefined : reason,
-                );
+                await controller.run("stop", taskId, {
+                  ...(reason === undefined || reason.trim().length === 0 ? {} : { reason }),
+                  targetTaskId,
+                });
                 pop();
               }}
             />
@@ -358,13 +377,19 @@ export function LifecycleActions({
 }) {
   const availability = getLifecycleAvailability(task, status);
   const disabled = controller.isMutating(taskId);
+  const startTaskId = status?.kind === "ready" ? status.task.id : (task?.id ?? taskId);
+  const localTaskId = status?.kind === "local" ? status.task.task : taskId;
   return (
     <>
       {availability.start ? (
         <Action
           title="Start Task"
           icon={Icon.Play}
-          {...(disabled ? {} : { onAction: () => controller.run("start", taskId) })}
+          {...(disabled
+            ? {}
+            : {
+                onAction: () => controller.run("start", taskId, { targetTaskId: startTaskId }),
+              })}
         />
       ) : null}
       {availability.stop ? (
@@ -374,7 +399,9 @@ export function LifecycleActions({
           <Action.Push
             title="Stop Task"
             icon={Icon.Stop}
-            target={<StopTaskForm controller={controller} taskId={taskId} />}
+            target={
+              <StopTaskForm controller={controller} taskId={taskId} targetTaskId={localTaskId} />
+            }
           />
         )
       ) : null}
@@ -382,7 +409,11 @@ export function LifecycleActions({
         <Action
           title="Resume Task"
           icon={Icon.ArrowClockwise}
-          {...(disabled ? {} : { onAction: () => controller.run("resume", taskId) })}
+          {...(disabled
+            ? {}
+            : {
+                onAction: () => controller.run("resume", taskId, { targetTaskId: localTaskId }),
+              })}
         />
       ) : null}
       {availability.cleanup ? (
@@ -403,7 +434,7 @@ export function LifecycleActions({
                     },
                   });
                   if (confirmed) {
-                    await controller.run("cleanup", taskId);
+                    await controller.run("cleanup", taskId, { targetTaskId: localTaskId });
                   }
                 },
               })}
