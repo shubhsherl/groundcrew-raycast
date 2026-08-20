@@ -9,8 +9,8 @@ Browse Groundcrew tasks and check Groundcrew status without leaving Raycast.
 ## Prerequisites
 
 - macOS with [Raycast](https://www.raycast.com/) installed
-- An installed and configured Groundcrew CLI
-- The `crew` executable available on `PATH`, or its absolute path entered in the extension preference
+- Groundcrew CLI `4.50.3` or newer, installed and configured by the user
+- The `crew` executable discoverable as described below, or its absolute path entered in the extension preference
 
 ## Commands
 
@@ -23,7 +23,14 @@ follow-up work.
 ## Configuration
 
 The optional **Groundcrew Executable Path** preference accepts an absolute path such as
-`/opt/homebrew/bin/crew`. Leave it empty to resolve `crew` from `PATH`.
+`/opt/homebrew/bin/crew`. When it is empty, the extension searches executable files named `crew` in this order:
+
+1. Raycast's process `PATH`.
+2. `/opt/homebrew/bin/crew`, then `/usr/local/bin/crew`.
+3. Installed Node-version bins under `$NVM_DIR/versions/node` (or `~/.nvm/versions/node`), newest version first.
+
+The extension invokes that executable directly with an argument array. It does not use a shell, read Groundcrew config
+files, or handle provider credentials.
 
 ## Development
 
