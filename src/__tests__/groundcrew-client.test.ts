@@ -10,6 +10,7 @@ import {
   GroundcrewClientError,
   MINIMUM_GROUNDCREW_VERSION,
   resolveCrewExecutable,
+  type GroundcrewPullRequest,
 } from "../cli";
 
 interface FakeResponse {
@@ -168,6 +169,7 @@ const legacyStatus = {
       ],
       queueBlocked: [],
     },
+    lastAttemptError: undefined as string | undefined,
     pullRequestsByWorktree: {
       "/work/groundcrew-raycast-tem-3894": [
         {
@@ -177,7 +179,7 @@ const legacyStatus = {
           title: "Implement client",
         },
       ],
-    },
+    } as Record<string, GroundcrewPullRequest[]>,
   },
 };
 

@@ -96,7 +96,7 @@ function isCanonicalTaskId(taskId: string): boolean {
   return taskId.includes(":");
 }
 
-function naturalTaskId(taskId: string): string {
+export function naturalTaskId(taskId: string): string {
   const normalized = normalizedTaskId(taskId);
   const separator = normalized.indexOf(":");
   return separator < 0 ? normalized : normalized.slice(separator + 1);

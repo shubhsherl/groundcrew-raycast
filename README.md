@@ -40,6 +40,50 @@ The optional **Groundcrew Executable Path** preference accepts an absolute path 
 The extension invokes that executable directly with an argument array. It does not use a shell, read Groundcrew config
 files, or handle provider credentials.
 
+## Environment / Troubleshooting
+
+Raycast spawns `crew` with a stripped environment: `PATH` is the bare
+`/usr/bin:/bin:/usr/sbin:/sbin` and no shell-exported variables are present. On
+node-version-manager (fnm, nvm, asdf) setups this produces three common failures:
+
+| Symptom | Root cause |
+|---|---|
+| `env: node: No such file or directory` | `crew` is a Node script (`#!/usr/bin/env node`); Raycast's `PATH` has no `node`. Homebrew installs to `/opt/homebrew/bin` (usually visible); nvm/fnm installs are not. |
+| Browse fails with "Linear API key not set"; Status works | `crew task list` needs `GROUNDCREW_LINEAR_API_KEY` (or `LINEAR_API_KEY`), which is typically shell-exported from `~/.secrets` or `.zshrc`. Status reads local files only, masking the gap. |
+| Cleanup fails with `Lifecycle: Idle · Session: Unknown` | `crew`'s workspace probe requires `cmux`/`tmux` (and `gh`/`git`) on `PATH`; Raycast strips them, so cleanup can't reconcile session state. |
+
+**Which commands need which environment:**
+
+- **Groundcrew Status** — reads local snapshot files only; works without credentials or session tools.
+- **Browse Groundcrew Tasks / Start Groundcrew Task / lifecycle actions** — require the provider API key and session backend (`cmux`/`tmux`, `gh`, `git`) on `PATH`.
+
+**Accepted API key variable names:** `GROUNDCREW_LINEAR_API_KEY` (preferred) or `LINEAR_API_KEY`.
+
+### Fix: point the Executable Path preference at a shim
+
+Create a wrapper script that sources your secrets and extends `PATH`, then point the
+**Groundcrew Executable Path** preference at it (or place it at `/opt/homebrew/bin/crew` for
+auto-discovery).
+
+```sh
+#!/bin/sh
+[ -f "$HOME/.secrets" ] && . "$HOME/.secrets"
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+exec "/absolute/path/to/node" "/absolute/path/to/@clipboard-health/groundcrew/bin/run.js" "$@"
+```
+
+Replace the two `exec` paths with the output of `which node` and `npm root -g`/`crew --version`
+locate the installed script. Mark the shim executable (`chmod +x <shim>`).
+
+> **Note:** Homebrew installs (`brew install clipboard-health/tap/groundcrew`) usually work
+> out of the box because `/opt/homebrew/bin` is on Raycast's default `PATH`. Node-version-manager
+> installs will not; the shim above is the recommended fix.
+
+**Maintainer note — cleaner long-term alternatives:**
+
+- Import the login-shell environment at extension startup using [`shell-env`](https://github.com/sindresorhus/shell-env) or [`fix-path`](https://github.com/sindresorhus/fix-path).
+- Spawn `crew` via Raycast's bundled `process.execPath` (Node) to sidestep the `env node` shebang entirely.
+
 ## Development
 
 ```sh

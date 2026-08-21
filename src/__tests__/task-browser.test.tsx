@@ -1,4 +1,4 @@
-import { createElement, type ReactElement } from "react";
+import { createElement, type ReactElement, type ReactNode } from "react";
 import { showToast } from "@raycast/api";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +16,7 @@ vi.mock("@raycast/api", () => {
   function mockComponent(name: string, renderProps: string[] = []) {
     return function MockComponent(props: Record<string, unknown>) {
       const children = [props.children, ...renderProps.map((property) => props[property])];
-      return createElement(name, props, ...children);
+      return createElement(name, props, ...(children as ReactNode[]));
     };
   }
 
@@ -205,14 +205,14 @@ describe("TaskBrowser", () => {
       (item) => item.props.id === "tracker:TEM-3895",
     );
     expect(
-      ready?.findAll((node) => node.type === "raycast-action").map((action) => action.props.title),
+      ready?.findAll((node) => (node.type as string) === "raycast-action").map((action) => action.props.title),
     ).toContain("Start Task");
     const active = findByType(renderer, "raycast-list-item").find(
       (item) => item.props.id === "queue:RUN-42",
     );
     expect(
       active
-        ?.findAll((node) => node.type === "raycast-action-push")
+        ?.findAll((node) => (node.type as string) === "raycast-action-push")
         .map((action) => action.props.title),
     ).toContain("Stop Task");
     const preserved = findByType(renderer, "raycast-list-item").find(
@@ -220,12 +220,12 @@ describe("TaskBrowser", () => {
     );
     expect(
       preserved
-        ?.findAll((node) => node.type === "raycast-action")
+        ?.findAll((node) => (node.type as string) === "raycast-action")
         .map((action) => action.props.title),
     ).toEqual(expect.arrayContaining(["Resume Task", "Cleanup Task"]));
 
     const start = ready
-      ?.findAll((node) => node.type === "raycast-action")
+      ?.findAll((node) => (node.type as string) === "raycast-action")
       .find((action) => action.props.title === "Start Task");
     await act(async () => {
       await start?.props.onAction();
@@ -268,7 +268,7 @@ describe("TaskBrowser", () => {
     );
     expect(
       active
-        ?.findAll((node) => node.type === "raycast-action-push")
+        ?.findAll((node) => (node.type as string) === "raycast-action-push")
         .map((action) => action.props.title),
     ).toContain("Stop Task");
   });
@@ -307,7 +307,7 @@ describe("TaskBrowser", () => {
     );
     expect(
       otherSection
-        ?.findAll((node) => node.type === "raycast-list-item")
+        ?.findAll((node) => (node.type as string) === "raycast-list-item")
         .map((item) => item.props.id),
     ).toEqual(["archive:MISC-2", "archive:MISC-1"]);
     const readyTask = findByType(renderer, "raycast-list-item").find(

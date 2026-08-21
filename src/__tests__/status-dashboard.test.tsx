@@ -1,4 +1,4 @@
-import { createElement, type ReactElement } from "react";
+import { createElement, type ReactElement, type ReactNode } from "react";
 import { showToast } from "@raycast/api";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
@@ -14,7 +14,7 @@ vi.mock("@raycast/api", () => {
   function mockComponent(name: string, renderProps: string[] = []) {
     return function MockComponent(props: Record<string, unknown>) {
       const children = [props.children, ...renderProps.map((property) => props[property])];
-      return createElement(name, props, ...children);
+      return createElement(name, props, ...(children as ReactNode[]));
     };
   }
 
@@ -313,7 +313,7 @@ describe("StatusDashboard", () => {
     );
     expect(
       active
-        ?.findAll((node) => node.type === "raycast-action-push")
+        ?.findAll((node) => (node.type as string) === "raycast-action-push")
         .map((action) => action.props.title),
     ).toContain("Stop Task");
     const preserved = findByType(renderer, "raycast-list-item").find(
@@ -321,14 +321,14 @@ describe("StatusDashboard", () => {
     );
     expect(
       preserved
-        ?.findAll((node) => node.type === "raycast-action")
+        ?.findAll((node) => (node.type as string) === "raycast-action")
         .map((action) => action.props.title),
     ).toEqual(expect.arrayContaining(["Resume Task", "Cleanup Task"]));
     const ready = findByType(renderer, "raycast-list-item").find(
       (item) => item.props.id === "queue-ready:linear:tem-3905",
     );
     const start = ready
-      ?.findAll((node) => node.type === "raycast-action")
+      ?.findAll((node) => (node.type as string) === "raycast-action")
       .find((action) => action.props.title === "Start Task");
     expect(start).toBeDefined();
 
@@ -380,7 +380,7 @@ describe("StatusDashboard", () => {
       "queue-ready:jira:tem-3905",
     ]);
     const jiraStart = providerRows[1]
-      ?.findAll((node) => node.type === "raycast-action")
+      ?.findAll((node) => (node.type as string) === "raycast-action")
       .find((action) => action.props.title === "Start Task");
     await act(async () => {
       await jiraStart?.props.onAction();
@@ -441,19 +441,19 @@ describe("StatusDashboard", () => {
     );
     expect(
       activeTask
-        ?.findAll((node) => node.type === "raycast-action-push")
+        ?.findAll((node) => (node.type as string) === "raycast-action-push")
         .map((action) => action.props.title),
     ).toEqual(expect.arrayContaining(["Stop Task", "Show Task Details"]));
     expect(
       activeTask
-        ?.findAll((node) => node.type === "raycast-action-open-in-browser")
+        ?.findAll((node) => (node.type as string) === "raycast-action-open-in-browser")
         .map((action) => action.props.url),
     ).toEqual([
       "https://linear.app/clipboardhealth/issue/TEM-3896",
       "https://github.com/ClipboardHealth/groundcrew-raycast/pull/4",
     ]);
     expect(
-      activeTask?.findAll((node) => node.type === "raycast-action-open")[0]?.props,
+      activeTask?.findAll((node) => (node.type as string) === "raycast-action-open")[0]?.props,
     ).toMatchObject({
       target: "/work/groundcrew-raycast-tem-3896",
       application: "Finder",
@@ -462,9 +462,9 @@ describe("StatusDashboard", () => {
       (item) => item.props.id === "local:tem-3903",
     );
     expect(
-      missingLocalTask?.findAll((node) => node.type === "raycast-action-open-in-browser"),
+      missingLocalTask?.findAll((node) => (node.type as string) === "raycast-action-open-in-browser"),
     ).toHaveLength(0);
-    expect(missingLocalTask?.findAll((node) => node.type === "raycast-action-open")).toHaveLength(
+    expect(missingLocalTask?.findAll((node) => (node.type as string) === "raycast-action-open")).toHaveLength(
       0,
     );
 
@@ -665,7 +665,7 @@ describe("StatusDashboard", () => {
     );
     expect(
       remoteHealth
-        ?.findAll((node) => node.type === "raycast-action")
+        ?.findAll((node) => (node.type as string) === "raycast-action")
         .some((action) => action.props.title === "Refresh Status"),
     ).toBe(true);
     const workspaceProbe = findByType(unavailableRemoteRenderer, "raycast-list-item").find(
@@ -673,7 +673,7 @@ describe("StatusDashboard", () => {
     );
     expect(
       workspaceProbe
-        ?.findAll((node) => node.type === "raycast-action")
+        ?.findAll((node) => (node.type as string) === "raycast-action")
         .some((action) => action.props.title === "Refresh Status"),
     ).toBe(true);
 
