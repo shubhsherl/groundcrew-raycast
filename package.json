@@ -31,6 +31,20 @@
       "title": "Groundcrew Status",
       "description": "View the status of the local Groundcrew CLI.",
       "mode": "view"
+    },
+    {
+      "name": "start-groundcrew-task",
+      "title": "Start Groundcrew Task",
+      "description": "Start a Groundcrew task by ticket number.",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "taskId",
+          "placeholder": "tem-3925 or linear:tem-3925",
+          "type": "text",
+          "required": true
+        }
+      ]
     }
   ],
   "dependencies": {
