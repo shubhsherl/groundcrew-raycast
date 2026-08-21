@@ -5,6 +5,7 @@ import { createGroundcrewClient, type GroundcrewClient } from "./cli";
 import {
   findCanonicalTask,
   findLifecycleTask,
+  naturalTaskId,
   useLifecycleActionController,
   type LifecycleMutations,
 } from "./components/lifecycle-actions";
@@ -17,16 +18,10 @@ interface Arguments {
   taskId: string;
 }
 
-function resolveNaturalTaskId(input: string): string {
-  const trimmed = input.trim().toLowerCase();
-  const separator = trimmed.indexOf(":");
-  return separator < 0 ? trimmed : trimmed.slice(separator + 1);
-}
-
 export default function Command(props: LaunchProps<{ arguments: Arguments }>) {
   const { crewPath } = getPreferenceValues<Preferences>();
   const rawInput = props.arguments.taskId.trim();
-  const taskId = resolveNaturalTaskId(rawInput);
+  const taskId = naturalTaskId(rawInput);
 
   const getClient = useMemo(() => {
     let clientPromise: Promise<GroundcrewClient> | undefined;
