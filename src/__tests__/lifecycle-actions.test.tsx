@@ -1,4 +1,4 @@
-import { createElement, type ReactElement } from "react";
+import { createElement, type ReactElement, type ReactNode } from "react";
 import { confirmAlert, showToast } from "@raycast/api";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +23,7 @@ vi.mock("@raycast/api", () => {
   function mockComponent(name: string, renderProps: string[] = []) {
     return function MockComponent(props: Record<string, unknown>) {
       const children = [props.children, ...renderProps.map((property) => props[property])];
-      return createElement(name, props, ...children);
+      return createElement(name, props, ...(children as ReactNode[]));
     };
   }
 
@@ -369,7 +369,7 @@ describe("lifecycle mutation feedback", () => {
         .filter((action) => ["Resume Task", "Cleanup Task"].includes(action.props.title))
         .map((action) => action.props.onAction),
     ).toEqual([undefined, undefined]);
-    const progressOptions = vi.mocked(showToast).mock.calls[0]?.[0] as {
+    const progressOptions = vi.mocked(showToast).mock.calls[0]?.[0] as unknown as {
       primaryAction?: { onAction?: () => void };
     };
     await act(async () => {
