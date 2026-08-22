@@ -1,8 +1,4 @@
-import type {
-  GroundcrewLifecycleResult,
-  GroundcrewStatusInventory,
-  GroundcrewTask,
-} from "../types/groundcrew";
+import type { GroundcrewLifecycleResult, GroundcrewStatusInventory, GroundcrewTask } from "../types/groundcrew";
 import { GroundcrewClientError } from "./errors";
 import { resolveCrewExecutable } from "./executable";
 import { filterStatusByNaturalTaskId, parseLegacyStatusJson } from "./legacy-status";
@@ -86,11 +82,10 @@ function commandFailure(argv: readonly string[], result: ProcessResult): Groundc
   const description = `crew ${argv.join(" ")}`;
   switch (result.kind) {
     case "launch-failure":
-      return new GroundcrewClientError(
-        "LAUNCH_FAILED",
-        `Could not launch ${description}: ${result.error.message}`,
-        { cause: result.error, diagnostics: diagnostics(result) },
-      );
+      return new GroundcrewClientError("LAUNCH_FAILED", `Could not launch ${description}: ${result.error.message}`, {
+        cause: result.error,
+        diagnostics: diagnostics(result),
+      });
     case "timeout":
       return new GroundcrewClientError("COMMAND_TIMEOUT", `${description} timed out.`, {
         diagnostics: diagnostics(result),
@@ -118,11 +113,7 @@ class InstalledGroundcrewClient implements GroundcrewClient {
   // concurrently with the first data call rather than serially before it.
   #versionValidation?: Promise<string>;
 
-  public constructor(
-    executablePath: string,
-    environment: NodeJS.ProcessEnv,
-    versionTimeoutMs: number,
-  ) {
+  public constructor(executablePath: string, environment: NodeJS.ProcessEnv, versionTimeoutMs: number) {
     this.executablePath = executablePath;
     this.#environment = environment;
     this.#versionTimeoutMs = versionTimeoutMs;
@@ -151,10 +142,7 @@ class InstalledGroundcrewClient implements GroundcrewClient {
     return result.stdout;
   }
 
-  async #runLifecycle(
-    argv: readonly string[],
-    options: LifecycleOptions = {},
-  ): Promise<GroundcrewLifecycleResult> {
+  async #runLifecycle(argv: readonly string[], options: LifecycleOptions = {}): Promise<GroundcrewLifecycleResult> {
     const versionCheck = this.#ensureCompatibleVersion();
     const process = runProcess(this.executablePath, argv, {
       environment: this.#environment,
@@ -177,10 +165,7 @@ class InstalledGroundcrewClient implements GroundcrewClient {
   public async getStatus(naturalTaskId?: string): Promise<GroundcrewStatusInventory> {
     const normalized = naturalTaskId?.trim();
     if (naturalTaskId !== undefined && normalized?.length === 0) {
-      throw new GroundcrewClientError(
-        "INVALID_ARGUMENT",
-        "Status filtering requires a non-empty natural task ID.",
-      );
+      throw new GroundcrewClientError("INVALID_ARGUMENT", "Status filtering requires a non-empty natural task ID.");
     }
     const inventory = parseLegacyStatusJson(await this.#runJson(["status", "--json"]));
     if (normalized === undefined) {
@@ -189,68 +174,35 @@ class InstalledGroundcrewClient implements GroundcrewClient {
     return filterStatusByNaturalTaskId(inventory, normalized);
   }
 
-  public async startTask(
-    taskId: string,
-    options: LifecycleOptions = {},
-  ): Promise<GroundcrewLifecycleResult> {
+  public async startTask(taskId: string, options: LifecycleOptions = {}): Promise<GroundcrewLifecycleResult> {
     return await this.#runLifecycle(["start", taskId], options);
   }
 
-  public async stopTask(
-    taskId: string,
-    options: StopTaskOptions = {},
-  ): Promise<GroundcrewLifecycleResult> {
-    const argv = [
-      "stop",
-      taskId,
-      ...(options.reason === undefined ? [] : ["--reason", options.reason]),
-    ];
+  public async stopTask(taskId: string, options: StopTaskOptions = {}): Promise<GroundcrewLifecycleResult> {
+    const argv = ["stop", taskId, ...(options.reason === undefined ? [] : ["--reason", options.reason])];
     return await this.#runLifecycle(argv, options);
   }
 
-  public async resumeTask(
-    taskId: string,
-    options: ResumeTaskOptions = {},
-  ): Promise<GroundcrewLifecycleResult> {
+  public async resumeTask(taskId: string, options: ResumeTaskOptions = {}): Promise<GroundcrewLifecycleResult> {
     const { newSession, ...lifecycleOptions } = options;
-    return await this.#runLifecycle(
-      ["resume", ...(newSession === true ? ["--new"] : []), taskId],
-      lifecycleOptions,
-    );
+    return await this.#runLifecycle(["resume", ...(newSession === true ? ["--new"] : []), taskId], lifecycleOptions);
   }
 
-  public async cleanupTask(
-    taskId: string,
-    options: CleanupTaskOptions = {},
-  ): Promise<GroundcrewLifecycleResult> {
+  public async cleanupTask(taskId: string, options: CleanupTaskOptions = {}): Promise<GroundcrewLifecycleResult> {
     const { force, ...lifecycleOptions } = options;
-    return await this.#runLifecycle(
-      ["cleanup", ...(force === true ? ["--force"] : []), taskId],
-      lifecycleOptions,
-    );
+    return await this.#runLifecycle(["cleanup", ...(force === true ? ["--force"] : []), taskId], lifecycleOptions);
   }
 
-  public async cleanupAllTasks(
-    options: CleanupAllOptions = {},
-  ): Promise<GroundcrewLifecycleResult> {
+  public async cleanupAllTasks(options: CleanupAllOptions = {}): Promise<GroundcrewLifecycleResult> {
     const { force, ...lifecycleOptions } = options;
-    return await this.#runLifecycle(
-      ["cleanup", "--all", ...(force === true ? ["--force"] : [])],
-      lifecycleOptions,
-    );
+    return await this.#runLifecycle(["cleanup", "--all", ...(force === true ? ["--force"] : [])], lifecycleOptions);
   }
 
-  public async completeTask(
-    taskId: string,
-    options: LifecycleOptions = {},
-  ): Promise<GroundcrewLifecycleResult> {
+  public async completeTask(taskId: string, options: LifecycleOptions = {}): Promise<GroundcrewLifecycleResult> {
     return await this.#runLifecycle(["task", "done", taskId], options);
   }
 
-  public async openWorkspace(
-    target: string,
-    options: OpenWorkspaceOptions = {},
-  ): Promise<GroundcrewLifecycleResult> {
+  public async openWorkspace(target: string, options: OpenWorkspaceOptions = {}): Promise<GroundcrewLifecycleResult> {
     const { kind, ...lifecycleOptions } = options;
     const argv = kind === "branch" ? ["open", "--branch", target] : ["open", target];
     return await this.#runLifecycle(argv, lifecycleOptions);
@@ -282,9 +234,7 @@ async function validateGroundcrewVersion(
   return assertCompatibleVersion(versionResult.stdout, MINIMUM_GROUNDCREW_VERSION);
 }
 
-export async function createGroundcrewClient(
-  options: CreateGroundcrewClientOptions = {},
-): Promise<GroundcrewClient> {
+export async function createGroundcrewClient(options: CreateGroundcrewClientOptions = {}): Promise<GroundcrewClient> {
   const environment = { ...(options.environment ?? process.env) };
   const executablePath = await resolveCrewExecutable({
     configuredPath: options.executablePath,

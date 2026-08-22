@@ -208,29 +208,19 @@ describe("TaskBrowser", () => {
       />,
     );
 
-    const ready = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "tracker:TEM-3895",
-    );
+    const ready = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "tracker:TEM-3895");
     expect(
       ready?.findAll((node) => (node.type as string) === "raycast-action").map((action) => action.props.title),
     ).toContain("Start Task");
-    const active = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "queue:RUN-42",
-    );
+    const active = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "queue:RUN-42");
     expect(
       active
-        ?.findAll((node) =>
-          ["raycast-action", "raycast-action-push"].includes(node.type as string),
-        )
+        ?.findAll((node) => ["raycast-action", "raycast-action-push"].includes(node.type as string))
         .map((action) => action.props.title),
     ).toContain("Stop & Clean up Task");
-    const preserved = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "tracker:REV-7",
-    );
+    const preserved = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "tracker:REV-7");
     expect(
-      preserved
-        ?.findAll((node) => (node.type as string) === "raycast-action")
-        .map((action) => action.props.title),
+      preserved?.findAll((node) => (node.type as string) === "raycast-action").map((action) => action.props.title),
     ).toEqual(expect.arrayContaining(["Resume Task", "Cleanup Task"]));
 
     const start = ready
@@ -272,14 +262,10 @@ describe("TaskBrowser", () => {
       />,
     );
 
-    const active = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "queue:RUN-42",
-    );
+    const active = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "queue:RUN-42");
     expect(
       active
-        ?.findAll((node) =>
-          ["raycast-action", "raycast-action-push"].includes(node.type as string),
-        )
+        ?.findAll((node) => ["raycast-action", "raycast-action-push"].includes(node.type as string))
         .map((action) => action.props.title),
     ).toContain("Stop & Clean up Task");
   });
@@ -293,37 +279,32 @@ describe("TaskBrowser", () => {
         }),
     );
     const renderer = await render(
-      <TaskBrowser
-        {...defaultLifecycleProps}
-        loadTasks={loadTasks}
-        loadTask={async () => taskDetail}
-      />,
+      <TaskBrowser {...defaultLifecycleProps} loadTasks={loadTasks} loadTask={async () => taskDetail} />,
     );
 
     expect(findByType(renderer, "raycast-list")[0]?.props.isLoading).toBe(true);
-    expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe(
-      "Loading Groundcrew Tasks",
-    );
+    expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe("Loading Groundcrew Tasks");
 
     await act(async () => {
       resolveTasks?.(tasks);
       await Promise.resolve();
     });
 
-    expect(
-      findByType(renderer, "raycast-list-section").map((section) => section.props.title),
-    ).toEqual(["Ready Todo", "Active", "In Review", "Blocked", "Completed", "Other"]);
+    expect(findByType(renderer, "raycast-list-section").map((section) => section.props.title)).toEqual([
+      "Ready Todo",
+      "Active",
+      "In Review",
+      "Blocked",
+      "Completed",
+      "Other",
+    ]);
     const otherSection = findByType(renderer, "raycast-list-section").find(
       (section) => section.props.title === "Other",
     );
     expect(
-      otherSection
-        ?.findAll((node) => (node.type as string) === "raycast-list-item")
-        .map((item) => item.props.id),
+      otherSection?.findAll((node) => (node.type as string) === "raycast-list-item").map((item) => item.props.id),
     ).toEqual(["archive:MISC-2", "archive:MISC-1"]);
-    const readyTask = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "tracker:TEM-3895",
-    );
+    const readyTask = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "tracker:TEM-3895");
     expect(readyTask?.props).toMatchObject({
       title: "Build the Groundcrew task browser",
       subtitle: "tracker:TEM-3895 · ClipboardHealth/groundcrew-raycast",
@@ -333,43 +314,27 @@ describe("TaskBrowser", () => {
         expect.objectContaining({ tag: expect.objectContaining({ value: "Todo" }) }),
       ]),
     });
-    const blockedTask = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "queue:BLOCKED-3",
-    );
+    const blockedTask = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "queue:BLOCKED-3");
     expect(blockedTask?.props.accessories).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: expect.objectContaining({ value: "Blocked" }) }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: expect.objectContaining({ value: "Blocked" }) })]),
     );
 
     const statusFilter = findByType(renderer, "raycast-list-dropdown")[0];
     await act(async () => statusFilter?.props.onChange("in-progress"));
-    expect(findByType(renderer, "raycast-list-item").map((item) => item.props.id)).toEqual([
-      "queue:RUN-42",
-    ]);
+    expect(findByType(renderer, "raycast-list-item").map((item) => item.props.id)).toEqual(["queue:RUN-42"]);
   });
 
   it("supports manual refresh and distinguishes empty, setup, command, and incompatible CLI states", async () => {
     const loadTasks = vi
       .fn<() => Promise<GroundcrewTask[]>>()
       .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(
-        new GroundcrewClientError("COMMAND_FAILED", "crew task list --json exited with code 1."),
-      );
+      .mockRejectedValueOnce(new GroundcrewClientError("COMMAND_FAILED", "crew task list --json exited with code 1."));
     const renderer = await render(
-      <TaskBrowser
-        {...defaultLifecycleProps}
-        loadTasks={loadTasks}
-        loadTask={async () => taskDetail}
-      />,
+      <TaskBrowser {...defaultLifecycleProps} loadTasks={loadTasks} loadTask={async () => taskDetail} />,
     );
 
-    expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe(
-      "No Groundcrew Tasks",
-    );
-    const refresh = findByType(renderer, "raycast-action").find(
-      (action) => action.props.title === "Refresh Tasks",
-    );
+    expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe("No Groundcrew Tasks");
+    const refresh = findByType(renderer, "raycast-action").find((action) => action.props.title === "Refresh Tasks");
     await act(async () => {
       await refresh?.props.onAction();
     });
@@ -391,18 +356,13 @@ describe("TaskBrowser", () => {
         loadTask={async () => taskDetail}
       />,
     );
-    expect(findByType(setupRenderer, "raycast-list-empty-view")[0]?.props.title).toBe(
-      "Groundcrew Setup Required",
-    );
+    expect(findByType(setupRenderer, "raycast-list-empty-view")[0]?.props.title).toBe("Groundcrew Setup Required");
 
     const incompatibleRenderer = await render(
       <TaskBrowser
         {...defaultLifecycleProps}
         loadTasks={async () => {
-          throw new GroundcrewClientError(
-            "INCOMPATIBLE_VERSION",
-            "Upgrade Groundcrew and try again.",
-          );
+          throw new GroundcrewClientError("INCOMPATIBLE_VERSION", "Upgrade Groundcrew and try again.");
         }}
         loadTask={async () => taskDetail}
       />,
@@ -432,15 +392,9 @@ describe("TaskBrowser", () => {
           }),
       );
     const renderer = await render(
-      <TaskBrowser
-        {...defaultLifecycleProps}
-        loadTasks={loadTasks}
-        loadTask={async () => taskDetail}
-      />,
+      <TaskBrowser {...defaultLifecycleProps} loadTasks={loadTasks} loadTask={async () => taskDetail} />,
     );
-    const refresh = findByType(renderer, "raycast-action").find(
-      (action) => action.props.title === "Refresh Tasks",
-    );
+    const refresh = findByType(renderer, "raycast-action").find((action) => action.props.title === "Refresh Tasks");
 
     let staleRefresh: Promise<void> | undefined;
     await act(async () => {
@@ -470,9 +424,7 @@ describe("TaskDetail", () => {
     const detail = findByType(renderer, "raycast-detail")[0];
     expect(detail?.props.markdown).toContain(taskDetail.description);
     expect(detail?.props.markdown).toContain("Publish shared contract");
-    expect(
-      findByType(renderer, "raycast-detail-metadata-label").map((item) => item.props.title),
-    ).toEqual(
+    expect(findByType(renderer, "raycast-detail-metadata-label").map((item) => item.props.title)).toEqual(
       expect.arrayContaining(["Task ID", "Status", "Source", "Repository", "Blockers", "Priority"]),
     );
     expect(findByType(renderer, "raycast-detail-metadata-link")[0]?.props).toMatchObject({
@@ -485,9 +437,7 @@ describe("TaskDetail", () => {
     });
 
     const withoutUrl = { ...taskDetail, url: "   " };
-    const withoutUrlRenderer = await render(
-      <TaskDetail task={withoutUrl} loadTask={async () => withoutUrl} />,
-    );
+    const withoutUrlRenderer = await render(<TaskDetail task={withoutUrl} loadTask={async () => withoutUrl} />);
     expect(findByType(withoutUrlRenderer, "raycast-action-open-in-browser")).toHaveLength(0);
     expect(findByType(withoutUrlRenderer, "raycast-detail-metadata-link")).toHaveLength(0);
   });

@@ -1,11 +1,4 @@
-import {
-  Action,
-  ActionPanel,
-  Detail,
-  getPreferenceValues,
-  Icon,
-  openExtensionPreferences,
-} from "@raycast/api";
+import { Action, ActionPanel, Detail, getPreferenceValues, Icon, openExtensionPreferences } from "@raycast/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createGroundcrewClient, type GroundcrewClient } from "../cli";
@@ -92,16 +85,8 @@ export function GroundcrewDoctor() {
           {state.output === undefined ? null : (
             <Action.CopyToClipboard title="Copy Diagnostics" content={state.output} />
           )}
-          <Action
-            title="Open Extension Preferences"
-            icon={Icon.Gear}
-            onAction={openExtensionPreferences}
-          />
-          <Action.OpenInBrowser
-            title="Install Groundcrew CLI"
-            icon={Icon.Download}
-            url={GROUNDCREW_INSTALL_URL}
-          />
+          <Action title="Open Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
+          <Action.OpenInBrowser title="Install Groundcrew CLI" icon={Icon.Download} url={GROUNDCREW_INSTALL_URL} />
         </ActionPanel>
       }
     />

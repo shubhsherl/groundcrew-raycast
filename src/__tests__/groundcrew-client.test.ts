@@ -184,9 +184,7 @@ const legacyStatus = {
 };
 
 afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })),
-  );
+  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })));
 });
 
 describe("crew executable discovery", () => {
@@ -486,12 +484,7 @@ describe("lifecycle process results", () => {
       stderr: "opaque warning\n",
     });
     expect(existsSync(marker)).toBe(false);
-    await expect(readArgvLog(fake.logPath)).resolves.toContainEqual([
-      "stop",
-      unsafeTask,
-      "--reason",
-      unsafeReason,
-    ]);
+    await expect(readArgvLog(fake.logPath)).resolves.toContainEqual(["stop", unsafeTask, "--reason", unsafeReason]);
   });
 
   it("distinguishes non-zero failure, timeout, cancellation, and launch failure", async () => {

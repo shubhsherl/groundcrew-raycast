@@ -17,13 +17,7 @@ import { GroundcrewClientError } from "./errors";
 
 export const LEGACY_STATUS_SCHEMA_VERSION = 1 as const;
 
-const CANONICAL_STATUSES = new Set<GroundcrewCanonicalStatus>([
-  "todo",
-  "in-progress",
-  "in-review",
-  "done",
-  "other",
-]);
+const CANONICAL_STATUSES = new Set<GroundcrewCanonicalStatus>(["todo", "in-progress", "in-review", "done", "other"]);
 const LIFECYCLES = new Set<GroundcrewLifecycle>([
   "provisioning",
   "running",
@@ -98,9 +92,7 @@ function isWorktreeDirtiness(value: unknown): value is GroundcrewWorktreeDirtine
   if (value.kind === "clean" || value.kind === "unknown") {
     return true;
   }
-  return (
-    value.kind === "dirty" && isFiniteNumber(value.modified) && isFiniteNumber(value.untracked)
-  );
+  return value.kind === "dirty" && isFiniteNumber(value.modified) && isFiniteNumber(value.untracked);
 }
 
 function isLocalWorktree(value: unknown): value is LocalWorktree {
@@ -154,9 +146,7 @@ function isLogCursor(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
   }
-  return (
-    isFiniteNumber(value.device) && isFiniteNumber(value.inode) && isFiniteNumber(value.offset)
-  );
+  return isFiniteNumber(value.device) && isFiniteNumber(value.inode) && isFiniteNumber(value.offset);
 }
 
 function isLocalStatus(value: unknown): value is LegacyLocalStatus {
@@ -194,9 +184,7 @@ function isSourceIssue(value: unknown): value is GroundcrewStatusSourceIssue {
 }
 
 function isQueueIssue(value: unknown): value is GroundcrewStatusQueueIssue {
-  return (
-    isBoardIssue(value) && typeof value.repository === "string" && typeof value.agent === "string"
-  );
+  return isBoardIssue(value) && typeof value.repository === "string" && typeof value.agent === "string";
 }
 
 function isStatusBlocker(value: unknown): boolean {
@@ -213,10 +201,7 @@ function isStatusBlocker(value: unknown): boolean {
 
 function isBlockedIssue(value: unknown): value is GroundcrewStatusBlockedIssue {
   return (
-    isRecord(value) &&
-    isQueueIssue(value) &&
-    Array.isArray(value.blockedBy) &&
-    value.blockedBy.every(isStatusBlocker)
+    isRecord(value) && isQueueIssue(value) && Array.isArray(value.blockedBy) && value.blockedBy.every(isStatusBlocker)
   );
 }
 
@@ -232,10 +217,7 @@ function isPullRequest(value: unknown): value is GroundcrewPullRequest {
   );
 }
 
-function isRecordOf<T>(
-  value: unknown,
-  entryPredicate: (entry: unknown) => entry is T,
-): value is Record<string, T> {
+function isRecordOf<T>(value: unknown, entryPredicate: (entry: unknown) => entry is T): value is Record<string, T> {
   return isRecord(value) && Object.values(value).every(entryPredicate);
 }
 
@@ -258,9 +240,7 @@ function isRemotePayload(value: unknown): value is LegacyRemotePayload {
 function isPullRequestRecord(value: unknown): value is Record<string, GroundcrewPullRequest[]> {
   return (
     isRecord(value) &&
-    Object.values(value).every(
-      (pullRequests) => Array.isArray(pullRequests) && pullRequests.every(isPullRequest),
-    )
+    Object.values(value).every((pullRequests) => Array.isArray(pullRequests) && pullRequests.every(isPullRequest))
   );
 }
 
@@ -283,11 +263,10 @@ function parseLegacyInventory(output: string): LegacyInventory {
   try {
     parsed = JSON.parse(output) as unknown;
   } catch (error) {
-    throw new GroundcrewClientError(
-      "MALFORMED_JSON",
-      "Groundcrew returned malformed JSON for crew status --json.",
-      { cause: error, diagnostics: { stdout: output } },
-    );
+    throw new GroundcrewClientError("MALFORMED_JSON", "Groundcrew returned malformed JSON for crew status --json.", {
+      cause: error,
+      diagnostics: { stdout: output },
+    });
   }
 
   if (!isRecord(parsed) || !isRecord(parsed.local) || !isRecord(parsed.remote)) {
@@ -354,24 +333,17 @@ export function parseLegacyStatusJson(output: string): GroundcrewStatusInventory
     remote: {
       lastAttemptAt: remote.lastAttemptAt,
       lastAttemptStatus: remote.lastAttemptStatus,
-      ...(remote.lastAttemptError === undefined
-        ? {}
-        : { lastAttemptError: remote.lastAttemptError }),
+      ...(remote.lastAttemptError === undefined ? {} : { lastAttemptError: remote.lastAttemptError }),
       ...(payload === undefined ? {} : { capturedAt: payload.capturedAt }),
     },
     maximumInProgress: local.maximumInProgress,
     workspaceProbe: local.workspaceProbe,
     orphanedSessions: local.orphanedSessions,
     tasks,
-    inProgressWithoutWorktree:
-      payload === undefined ? [] : withoutLocalWorktree(payload.inProgress, localTasks),
+    inProgressWithoutWorktree: payload === undefined ? [] : withoutLocalWorktree(payload.inProgress, localTasks),
     queueReady: payload === undefined ? [] : withoutLocalWorktree(payload.queueReady, localTasks),
-    queueBlocked:
-      payload === undefined ? [] : withoutLocalWorktree(payload.queueBlocked, localTasks),
-    slots:
-      payload === undefined
-        ? undefined
-        : { used: payload.inProgress.length, maximum: local.maximumInProgress },
+    queueBlocked: payload === undefined ? [] : withoutLocalWorktree(payload.queueBlocked, localTasks),
+    slots: payload === undefined ? undefined : { used: payload.inProgress.length, maximum: local.maximumInProgress },
   };
 }
 

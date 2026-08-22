@@ -1,17 +1,7 @@
-import type {
-  GroundcrewCanonicalStatus,
-  GroundcrewTask,
-  GroundcrewTaskBlocker,
-} from "../types/groundcrew";
+import type { GroundcrewCanonicalStatus, GroundcrewTask, GroundcrewTaskBlocker } from "../types/groundcrew";
 import { GroundcrewClientError } from "./errors";
 
-const CANONICAL_STATUSES = new Set<GroundcrewCanonicalStatus>([
-  "todo",
-  "in-progress",
-  "in-review",
-  "done",
-  "other",
-]);
+const CANONICAL_STATUSES = new Set<GroundcrewCanonicalStatus>(["todo", "in-progress", "in-review", "done", "other"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -33,9 +23,7 @@ function isTaskBlocker(value: unknown): value is GroundcrewTaskBlocker {
     typeof value.id === "string" &&
     typeof value.title === "string" &&
     isCanonicalStatus(value.status) &&
-    (value.statusReason === undefined ||
-      value.statusReason === "missing" ||
-      value.statusReason === "unmapped") &&
+    (value.statusReason === undefined || value.statusReason === "missing" || value.statusReason === "unmapped") &&
     isOptionalString(value.nativeStatus)
   );
 }
@@ -58,8 +46,7 @@ function isTask(value: unknown): value is GroundcrewTask {
     value.blockers.every(isTaskBlocker) &&
     typeof value.hasMoreBlockers === "boolean" &&
     isOptionalString(value.url) &&
-    (value.priority === undefined ||
-      (typeof value.priority === "number" && Number.isFinite(value.priority)))
+    (value.priority === undefined || (typeof value.priority === "number" && Number.isFinite(value.priority)))
   );
 }
 
@@ -67,11 +54,10 @@ function parseJson(output: string, commandDescription: string): unknown {
   try {
     return JSON.parse(output) as unknown;
   } catch (error) {
-    throw new GroundcrewClientError(
-      "MALFORMED_JSON",
-      `Groundcrew returned malformed JSON for ${commandDescription}.`,
-      { cause: error, diagnostics: { stdout: output } },
-    );
+    throw new GroundcrewClientError("MALFORMED_JSON", `Groundcrew returned malformed JSON for ${commandDescription}.`, {
+      cause: error,
+      diagnostics: { stdout: output },
+    });
   }
 }
 

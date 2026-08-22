@@ -53,10 +53,7 @@ interface AsyncState<T> {
   value?: T;
 }
 
-type ReloadResult<T> =
-  | { kind: "success"; value: T }
-  | { kind: "failure"; error: unknown }
-  | { kind: "stale" };
+type ReloadResult<T> = { kind: "success"; value: T } | { kind: "failure"; error: unknown } | { kind: "stale" };
 
 interface ErrorPresentation {
   description: string;
@@ -64,10 +61,7 @@ interface ErrorPresentation {
   title: string;
 }
 
-const STATUS_PRESENTATION: Record<
-  GroundcrewCanonicalStatus,
-  { color: Color; icon: Icon; title: string }
-> = {
+const STATUS_PRESENTATION: Record<GroundcrewCanonicalStatus, { color: Color; icon: Icon; title: string }> = {
   todo: { color: Color.SecondaryText, icon: Icon.Circle, title: "Todo" },
   "in-progress": { color: Color.Blue, icon: Icon.CircleProgress, title: "In Progress" },
   "in-review": { color: Color.Purple, icon: Icon.Eye, title: "In Review" },
@@ -245,12 +239,7 @@ async function showRefreshFailure(title: string, error: unknown): Promise<void> 
 
 function RefreshAction({ onRefresh, title }: { onRefresh: () => Promise<void>; title: string }) {
   return (
-    <Action
-      title={title}
-      icon={Icon.ArrowClockwise}
-      shortcut={Keyboard.Shortcut.Common.Refresh}
-      onAction={onRefresh}
-    />
+    <Action title={title} icon={Icon.ArrowClockwise} shortcut={Keyboard.Shortcut.Common.Refresh} onAction={onRefresh} />
   );
 }
 
@@ -267,16 +256,8 @@ function EmptyStateActions({
       {showPreferences ? (
         <>
           <Action.Push title="Run Doctor" icon={Icon.Stethoscope} target={<GroundcrewDoctor />} />
-          <Action
-            title="Open Extension Preferences"
-            icon={Icon.Gear}
-            onAction={openExtensionPreferences}
-          />
-          <Action.OpenInBrowser
-            title="Install Groundcrew CLI"
-            icon={Icon.Download}
-            url={GROUNDCREW_INSTALL_URL}
-          />
+          <Action title="Open Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
+          <Action.OpenInBrowser title="Install Groundcrew CLI" icon={Icon.Download} url={GROUNDCREW_INSTALL_URL} />
         </>
       ) : null}
     </ActionPanel>
@@ -348,19 +329,13 @@ function TaskRow({
         {
           text: task.agent ?? "No agent",
           icon: Icon.Person,
-          tooltip:
-            task.agent === undefined ? "No agent supplied by Groundcrew" : `Agent: ${task.agent}`,
+          tooltip: task.agent === undefined ? "No agent supplied by Groundcrew" : `Agent: ${task.agent}`,
         },
         { tag: { value: status.title, color: status.color } },
       ]}
       actions={
         <ActionPanel>
-          <LifecycleActions
-            controller={controller}
-            taskId={task.id}
-            task={task}
-            status={lifecycleStatus}
-          />
+          <LifecycleActions controller={controller} taskId={task.id} task={task} status={lifecycleStatus} />
           <Action.Push
             title="Show Details"
             icon={Icon.Sidebar}
@@ -374,19 +349,9 @@ function TaskRow({
   );
 }
 
-function StatusFilter({
-  value,
-  onChange,
-}: {
-  value: TaskFilter;
-  onChange: (value: TaskFilter) => void;
-}) {
+function StatusFilter({ value, onChange }: { value: TaskFilter; onChange: (value: TaskFilter) => void }) {
   return (
-    <List.Dropdown
-      tooltip="Filter by Status"
-      value={value}
-      onChange={(next) => onChange(next as TaskFilter)}
-    >
+    <List.Dropdown tooltip="Filter by Status" value={value} onChange={(next) => onChange(next as TaskFilter)}>
       <List.Dropdown.Item title="All Tasks" value="all" />
       <List.Dropdown.Item title="Ready Todo" value="ready" />
       <List.Dropdown.Item title="Todo" value="todo" />
@@ -436,12 +401,7 @@ function taskMarkdown(task: GroundcrewTask): string {
 
 export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
   const loader = useCallback(() => loadTask(summary.id), [loadTask, summary.id]);
-  const {
-    error,
-    isLoading,
-    reload,
-    value: task = summary,
-  } = useAsyncValue(loader, { initialValue: summary });
+  const { error, isLoading, reload, value: task = summary } = useAsyncValue(loader, { initialValue: summary });
   const presentation = error === undefined ? undefined : errorPresentation(error, "detail");
   const url = taskUrl(task);
   const refresh = useCallback(async () => {
@@ -481,16 +441,10 @@ export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
           <Detail.Metadata.Label title="Agent" text={task.agent ?? "Not provided"} />
           <Detail.Metadata.Label
             title="Blockers"
-            text={
-              isBlocked(task) ? `${task.blockers.length}${task.hasMoreBlockers ? "+" : ""}` : "None"
-            }
+            text={isBlocked(task) ? `${task.blockers.length}${task.hasMoreBlockers ? "+" : ""}` : "None"}
           />
-          {task.priority === undefined ? null : (
-            <Detail.Metadata.Label title="Priority" text={String(task.priority)} />
-          )}
-          {url === undefined ? null : (
-            <Detail.Metadata.Link title="Task URL" target={url} text={url} />
-          )}
+          {task.priority === undefined ? null : <Detail.Metadata.Label title="Priority" text={String(task.priority)} />}
+          {url === undefined ? null : <Detail.Metadata.Link title="Task URL" target={url} text={url} />}
         </Detail.Metadata>
       }
       actions={
@@ -498,11 +452,7 @@ export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
           {url === undefined ? null : <Action.OpenInBrowser title="Open Task" url={url} />}
           <RefreshAction title="Refresh Task" onRefresh={refresh} />
           {presentation?.showPreferences ? (
-            <Action
-              title="Open Extension Preferences"
-              icon={Icon.Gear}
-              onAction={openExtensionPreferences}
-            />
+            <Action title="Open Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
           ) : null}
         </ActionPanel>
       }
@@ -512,7 +462,12 @@ export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
 
 export function TaskBrowser({ loadTasks, loadTask, loadStatus, mutations }: TaskBrowserProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
-  const { error, isLoading, reload, value: tasks } = useAsyncValue(loadTasks, {
+  const {
+    error,
+    isLoading,
+    reload,
+    value: tasks,
+  } = useAsyncValue(loadTasks, {
     cacheKey: "groundcrew.browse.tasks",
   });
   const { reload: reloadStatus, value: status } = useAsyncValue(loadStatus, {
@@ -523,9 +478,7 @@ export function TaskBrowser({ loadTasks, loadTask, loadStatus, mutations }: Task
       const [taskResult, statusResult] = await Promise.all([reload(), reloadStatus()]);
       return {
         taskRefreshed: taskResult.kind === "success",
-        ...(taskResult.kind === "success"
-          ? { task: findCanonicalTask(taskResult.value, taskId) }
-          : {}),
+        ...(taskResult.kind === "success" ? { task: findCanonicalTask(taskResult.value, taskId) } : {}),
         statusRefreshed: statusResult.kind === "success",
         ...(statusResult.kind === "success"
           ? {
@@ -571,12 +524,7 @@ export function TaskBrowser({ loadTasks, loadTask, loadStatus, mutations }: Task
       filtering={{ keepSectionOrder: true }}
       searchBarPlaceholder="Search tasks, IDs, repositories, agents, or sources"
       searchBarAccessory={<StatusFilter value={filter} onChange={setFilter} />}
-      actions={
-        <EmptyStateActions
-          onRefresh={refresh}
-          showPreferences={presentation?.showPreferences ?? false}
-        />
-      }
+      actions={<EmptyStateActions onRefresh={refresh} showPreferences={presentation?.showPreferences ?? false} />}
     >
       {groups.map((group) => (
         <List.Section key={group.key} title={group.title} subtitle={`${group.tasks.length}`}>
@@ -596,12 +544,7 @@ export function TaskBrowser({ loadTasks, loadTask, loadStatus, mutations }: Task
         <List.EmptyView
           title={emptyTitle}
           description={emptyDescription}
-          actions={
-            <EmptyStateActions
-              onRefresh={refresh}
-              showPreferences={presentation?.showPreferences ?? false}
-            />
-          }
+          actions={<EmptyStateActions onRefresh={refresh} showPreferences={presentation?.showPreferences ?? false} />}
         />
       ) : null}
     </List>

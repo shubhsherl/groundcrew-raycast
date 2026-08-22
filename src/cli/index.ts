@@ -6,11 +6,7 @@ export {
   type LifecycleOptions,
   type StopTaskOptions,
 } from "./client";
-export {
-  GroundcrewClientError,
-  type GroundcrewClientErrorCode,
-  type GroundcrewErrorDiagnostics,
-} from "./errors";
+export { GroundcrewClientError, type GroundcrewClientErrorCode, type GroundcrewErrorDiagnostics } from "./errors";
 export { resolveCrewExecutable, type ResolveCrewExecutableOptions } from "./executable";
 export { LEGACY_STATUS_SCHEMA_VERSION } from "./legacy-status";
 export type {

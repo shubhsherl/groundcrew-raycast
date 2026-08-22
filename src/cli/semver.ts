@@ -68,10 +68,7 @@ export function assertCompatibleVersion(output: string, minimumVersion: string):
     output,
     `Groundcrew returned an invalid SemVer from crew --version: ${JSON.stringify(output.trim())}`,
   );
-  const minimum = parseSemVer(
-    minimumVersion,
-    `The extension minimum version is invalid: ${minimumVersion}`,
-  );
+  const minimum = parseSemVer(minimumVersion, `The extension minimum version is invalid: ${minimumVersion}`);
   if (compareSemVer(installed, minimum) < 0) {
     throw new GroundcrewClientError(
       "INCOMPATIBLE_VERSION",

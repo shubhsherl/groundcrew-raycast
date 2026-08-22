@@ -75,10 +75,5 @@ export default function Command(props: LaunchProps<{ arguments: Arguments }>) {
   }, [getClient, target, kind]);
 
   const heading = kind === "branch" ? "Opening Branch" : "Opening Pull Request";
-  return (
-    <Detail
-      isLoading={state.isLoading}
-      markdown={`## ${heading}\n\n\`${target}\`\n\n${state.message ?? ""}`}
-    />
-  );
+  return <Detail isLoading={state.isLoading} markdown={`## ${heading}\n\n\`${target}\`\n\n${state.message ?? ""}`} />;
 }

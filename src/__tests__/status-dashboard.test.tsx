@@ -319,30 +319,18 @@ describe("StatusDashboard", () => {
       stderr: "",
     });
     const renderer = await render(
-      <StatusDashboard
-        loadStatus={loadStatus}
-        loadTasks={loadTasks}
-        mutations={lifecycleMutations({ startTask })}
-      />,
+      <StatusDashboard loadStatus={loadStatus} loadTasks={loadTasks} mutations={lifecycleMutations({ startTask })} />,
     );
 
-    const active = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "local:linear:tem-3896",
-    );
+    const active = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "local:linear:tem-3896");
     expect(
       active
-        ?.findAll((node) =>
-          ["raycast-action", "raycast-action-push"].includes(node.type as string),
-        )
+        ?.findAll((node) => ["raycast-action", "raycast-action-push"].includes(node.type as string))
         .map((action) => action.props.title),
     ).toContain("Stop & Clean up Task");
-    const preserved = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "local:tem-3901",
-    );
+    const preserved = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "local:tem-3901");
     expect(
-      preserved
-        ?.findAll((node) => (node.type as string) === "raycast-action")
-        .map((action) => action.props.title),
+      preserved?.findAll((node) => (node.type as string) === "raycast-action").map((action) => action.props.title),
     ).toEqual(expect.arrayContaining(["Resume Task", "Cleanup Task"]));
     const ready = findByType(renderer, "raycast-list-item").find(
       (item) => item.props.id === "queue-ready:linear:tem-3905",
@@ -419,23 +407,17 @@ describe("StatusDashboard", () => {
           resolveStatus = resolve;
         }),
     );
-    const renderer = await render(
-      <StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />,
-    );
+    const renderer = await render(<StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />);
 
     expect(findByType(renderer, "raycast-list")[0]?.props.isLoading).toBe(true);
-    expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe(
-      "Loading Groundcrew Status",
-    );
+    expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe("Loading Groundcrew Status");
 
     await act(async () => {
       resolveStatus?.(inventory);
       await Promise.resolve();
     });
 
-    expect(
-      findByType(renderer, "raycast-list-section").map((section) => section.props.title),
-    ).toEqual([
+    expect(findByType(renderer, "raycast-list-section").map((section) => section.props.title)).toEqual([
       "Active Workspaces",
       "Preserved Workspaces",
       "Missing Workspaces",
@@ -461,9 +443,7 @@ describe("StatusDashboard", () => {
     );
     expect(
       activeTask
-        ?.findAll((node) =>
-          ["raycast-action", "raycast-action-push"].includes(node.type as string),
-        )
+        ?.findAll((node) => ["raycast-action", "raycast-action-push"].includes(node.type as string))
         .map((action) => action.props.title),
     ).toEqual(expect.arrayContaining(["Stop & Clean up Task", "Show Task Details"]));
     expect(
@@ -488,27 +468,18 @@ describe("StatusDashboard", () => {
     expect(
       missingLocalTask?.findAll((node) => (node.type as string) === "raycast-action-open-in-browser"),
     ).toHaveLength(0);
-    expect(missingLocalTask?.findAll((node) => (node.type as string) === "raycast-action-open")).toHaveLength(
-      0,
-    );
+    expect(missingLocalTask?.findAll((node) => (node.type as string) === "raycast-action-open")).toHaveLength(0);
 
-    const slotHealth = findByType(renderer, "raycast-list-item").find(
-      (item) => item.props.id === "slot-health",
-    );
+    const slotHealth = findByType(renderer, "raycast-list-item").find((item) => item.props.id === "slot-health");
     expect(slotHealth?.props.subtitle).toContain("local captured 2026-08-20T08:30:00.000Z");
-    expect(slotHealth?.props.subtitle).toContain(
-      "remote attempt unavailable at 2026-08-20T08:30:01.000Z",
-    );
-    expect(slotHealth?.props.subtitle).toContain(
-      "retained payload captured 2026-08-20T07:00:00.000Z",
-    );
+    expect(slotHealth?.props.subtitle).toContain("remote attempt unavailable at 2026-08-20T08:30:01.000Z");
+    expect(slotHealth?.props.subtitle).toContain("retained payload captured 2026-08-20T07:00:00.000Z");
     const lifecycleByTask = Object.fromEntries(
       findByType(renderer, "raycast-list-item")
         .filter((item) => String(item.props.id).startsWith("local:"))
         .map((item) => [
           item.props.id,
-          item.props.accessories.find((accessory: { tag?: { value: string } }) => accessory.tag)
-            ?.tag.value,
+          item.props.accessories.find((accessory: { tag?: { value: string } }) => accessory.tag)?.tag.value,
         ]),
     );
     expect(lifecycleByTask).toMatchObject({
@@ -522,20 +493,15 @@ describe("StatusDashboard", () => {
 
   it("uses a state-aware primary action: cmux for live, resume for preserved", async () => {
     const loadStatus = vi.fn(async () => inventory);
-    const renderer = await render(
-      <StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />,
-    );
+    const renderer = await render(<StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />);
     await act(async () => {
       await Promise.resolve();
     });
 
     const firstActionTitle = (id: string) => {
       const item = findByType(renderer, "raycast-list-item").find((i) => i.props.id === id);
-      return item
-        ?.findAll((node) =>
-          ["raycast-action", "raycast-action-push"].includes(node.type as string),
-        )[0]
-        ?.props.title;
+      return item?.findAll((node) => ["raycast-action", "raycast-action-push"].includes(node.type as string))[0]?.props
+        .title;
     };
 
     // Live/active task leads with Open in Cmux; interrupted (preserved) leads with Resume.
@@ -558,11 +524,7 @@ describe("StatusDashboard", () => {
     }));
     const loadStatus = vi.fn(async () => inventory);
     const renderer = await render(
-      <StatusDashboard
-        {...defaultLifecycleProps}
-        loadStatus={loadStatus}
-        cleanupAllTasks={cleanupAllTasks}
-      />,
+      <StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} cleanupAllTasks={cleanupAllTasks} />,
     );
     await act(async () => {
       await Promise.resolve();
@@ -575,22 +537,15 @@ describe("StatusDashboard", () => {
         .map((action) => action.props.title) ?? [];
 
     expect(actionTitles("local:tem-3901")).toEqual(
-      expect.arrayContaining([
-        "Clean up All Idle Workspaces",
-        "Clean up All Idle Workspaces (Force)",
-      ]),
+      expect.arrayContaining(["Clean up All Idle Workspaces", "Clean up All Idle Workspaces (Force)"]),
     );
     expect(actionTitles("local:linear:tem-3896")).not.toContain("Clean up All Idle Workspaces");
 
     const preservedActions = findByType(renderer, "raycast-list-item")
       .find((item) => item.props.id === "local:tem-3901")
       ?.findAll((node) => (node.type as string) === "raycast-action");
-    const normal = preservedActions?.find(
-      (action) => action.props.title === "Clean up All Idle Workspaces",
-    );
-    const force = preservedActions?.find(
-      (action) => action.props.title === "Clean up All Idle Workspaces (Force)",
-    );
+    const normal = preservedActions?.find((action) => action.props.title === "Clean up All Idle Workspaces");
+    const force = preservedActions?.find((action) => action.props.title === "Clean up All Idle Workspaces (Force)");
 
     await act(async () => {
       await normal?.props.onAction();
@@ -605,15 +560,10 @@ describe("StatusDashboard", () => {
   });
 
   it("filters task detail from the joined inventory and exposes only supplied native resources", async () => {
-    const renderer = await render(
-      <StatusTaskDetail inventory={inventory} naturalTaskId="TEM-3896" />,
-    );
+    const renderer = await render(<StatusTaskDetail inventory={inventory} naturalTaskId="TEM-3896" />);
 
     const metadata = Object.fromEntries(
-      findByType(renderer, "raycast-detail-metadata-label").map((label) => [
-        label.props.title,
-        label.props.text,
-      ]),
+      findByType(renderer, "raycast-detail-metadata-label").map((label) => [label.props.title, label.props.text]),
     );
     expect(metadata).toMatchObject({
       "Task ID": "tem-3896",
@@ -628,19 +578,13 @@ describe("StatusDashboard", () => {
       Workspace: "Available · 1 worktree",
       "Pull Requests": "#4 · open · Build status dashboard",
     });
-    expect(findByType(renderer, "raycast-detail")[0]?.props.markdown).toContain(
-      "Review the latest output",
-    );
-    expect(
-      findByType(renderer, "raycast-action-open-in-browser").map((action) => action.props.url),
-    ).toEqual([
+    expect(findByType(renderer, "raycast-detail")[0]?.props.markdown).toContain("Review the latest output");
+    expect(findByType(renderer, "raycast-action-open-in-browser").map((action) => action.props.url)).toEqual([
       "https://linear.app/clipboardhealth/issue/TEM-3896",
       "https://github.com/ClipboardHealth/groundcrew-raycast/pull/4",
     ]);
     expect(
-      findByType(renderer, "raycast-action-open").find(
-        (action) => action.props.application === "Finder",
-      )?.props,
+      findByType(renderer, "raycast-action-open").find((action) => action.props.application === "Finder")?.props,
     ).toMatchObject({
       title: "Open Worktree in Finder",
       target: "/work/groundcrew-raycast-tem-3896",
@@ -653,20 +597,14 @@ describe("StatusDashboard", () => {
     expect(findByType(ambiguousPullRequestRenderer, "raycast-detail")[0]?.props.markdown).toContain(
       "No pull request was returned. The legacy status cannot distinguish no PR from a failed GitHub lookup.",
     );
-    expect(findByType(ambiguousPullRequestRenderer, "raycast-action-open-in-browser")).toHaveLength(
-      0,
-    );
+    expect(findByType(ambiguousPullRequestRenderer, "raycast-action-open-in-browser")).toHaveLength(0);
     expect(findByType(ambiguousPullRequestRenderer, "raycast-action-open")).toHaveLength(1);
 
-    const missingWorkspaceRenderer = await render(
-      <StatusTaskDetail inventory={inventory} naturalTaskId="tem-3904" />,
-    );
+    const missingWorkspaceRenderer = await render(<StatusTaskDetail inventory={inventory} naturalTaskId="tem-3904" />);
     expect(findByType(missingWorkspaceRenderer, "raycast-action-open")).toHaveLength(0);
     expect(findByType(missingWorkspaceRenderer, "raycast-action-open-in-browser")).toHaveLength(1);
 
-    const blockedRenderer = await render(
-      <StatusTaskDetail inventory={inventory} naturalTaskId="tem-3906" />,
-    );
+    const blockedRenderer = await render(<StatusTaskDetail inventory={inventory} naturalTaskId="tem-3906" />);
     const blockedEligibility = findByType(blockedRenderer, "raycast-detail-metadata-label").find(
       (label) => label.props.title === "Blockers / Eligibility",
     );
@@ -674,13 +612,10 @@ describe("StatusDashboard", () => {
     expect(findByType(blockedRenderer, "raycast-action-open-in-browser")).toHaveLength(0);
     expect(findByType(blockedRenderer, "raycast-action-open")).toHaveLength(0);
 
-    const preservedRenderer = await render(
-      <StatusTaskDetail inventory={inventory} naturalTaskId="tem-3901" />,
+    const preservedRenderer = await render(<StatusTaskDetail inventory={inventory} naturalTaskId="tem-3901" />);
+    const preservedEligibility = findByType(preservedRenderer, "raycast-detail-metadata-label").find(
+      (label) => label.props.title === "Blockers / Eligibility",
     );
-    const preservedEligibility = findByType(
-      preservedRenderer,
-      "raycast-detail-metadata-label",
-    ).find((label) => label.props.title === "Blockers / Eligibility");
     expect(preservedEligibility?.props.text).toBe("Preserved local workspace");
 
     const mixedPullRequestInventory = structuredClone(inventory);
@@ -699,9 +634,7 @@ describe("StatusDashboard", () => {
       "groundcrew-cli (shubhsherl-tem-3896): No pull request was returned.",
     );
     expect(
-      findByType(mixedPullRequestRenderer, "raycast-action-open-in-browser").map(
-        (action) => action.props.url,
-      ),
+      findByType(mixedPullRequestRenderer, "raycast-action-open-in-browser").map((action) => action.props.url),
     ).toEqual([
       "https://linear.app/clipboardhealth/issue/TEM-3896",
       "https://github.com/ClipboardHealth/groundcrew-raycast/pull/4",
@@ -728,17 +661,13 @@ describe("StatusDashboard", () => {
       .fn<() => Promise<GroundcrewStatusInventory>>()
       .mockResolvedValueOnce(emptyInventory)
       .mockRejectedValueOnce(new Error("temporary status failure"));
-    const renderer = await render(
-      <StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />,
-    );
+    const renderer = await render(<StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />);
 
     expect(findByType(renderer, "raycast-list-empty-view")[0]?.props).toMatchObject({
       title: "No Groundcrew Work",
       description: expect.stringContaining("0 of 3 slots used"),
     });
-    const refresh = findByType(renderer, "raycast-action").find(
-      (action) => action.props.title === "Refresh Status",
-    );
+    const refresh = findByType(renderer, "raycast-action").find((action) => action.props.title === "Refresh Status");
     await act(async () => {
       await refresh?.props.onAction();
     });
@@ -748,9 +677,7 @@ describe("StatusDashboard", () => {
         message: "temporary status failure",
       }),
     );
-    expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe(
-      "No Groundcrew Work",
-    );
+    expect(findByType(renderer, "raycast-list-empty-view")[0]?.props.title).toBe("No Groundcrew Work");
 
     const unavailableRemoteRenderer = await render(
       <StatusDashboard
@@ -793,10 +720,7 @@ describe("StatusDashboard", () => {
       <StatusDashboard
         {...defaultLifecycleProps}
         loadStatus={async () => {
-          throw new GroundcrewClientError(
-            "STATUS_SCHEMA_MISMATCH",
-            "Groundcrew status schema 2 is incompatible.",
-          );
+          throw new GroundcrewClientError("STATUS_SCHEMA_MISMATCH", "Groundcrew status schema 2 is incompatible.");
         }}
       />,
     );

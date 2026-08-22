@@ -24,20 +24,12 @@ export interface GroundcrewTask {
   priority?: number;
 }
 
-export type GroundcrewLifecycle =
-  | "provisioning"
-  | "running"
-  | "interrupted"
-  | "resumed"
-  | "failed-to-launch"
-  | "idle";
+export type GroundcrewLifecycle = "provisioning" | "running" | "interrupted" | "resumed" | "failed-to-launch" | "idle";
 
 export type GroundcrewSessionState = "live" | "exited" | "not-live" | "unknown";
 
 export type GroundcrewWorktreeDirtiness =
-  | { kind: "dirty"; modified: number; untracked: number }
-  | { kind: "clean" }
-  | { kind: "unknown" };
+  { kind: "dirty"; modified: number; untracked: number } | { kind: "clean" } | { kind: "unknown" };
 
 export interface GroundcrewPullRequest {
   url: string;

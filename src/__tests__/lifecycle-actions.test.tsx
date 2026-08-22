@@ -11,11 +11,7 @@ import {
   type LifecycleMutations,
   useLifecycleActionController,
 } from "../components/lifecycle-actions";
-import type {
-  GroundcrewStatusInventory,
-  GroundcrewStatusTask,
-  GroundcrewTask,
-} from "../types/groundcrew";
+import type { GroundcrewStatusInventory, GroundcrewStatusTask, GroundcrewTask } from "../types/groundcrew";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -155,9 +151,7 @@ describe("lifecycle action availability", () => {
       statusInventory([localTask({ lifecycle: "interrupted", session: "not-live" })]),
       canonicalTask.id,
     );
-    expect(
-      getLifecycleAvailability({ ...canonicalTask, status: "in-progress" }, interrupted),
-    ).toEqual({
+    expect(getLifecycleAvailability({ ...canonicalTask, status: "in-progress" }, interrupted)).toEqual({
       cleanup: true,
       resume: true,
       start: false,
@@ -166,14 +160,16 @@ describe("lifecycle action availability", () => {
     });
 
     const failedLaunch = findLifecycleTask(
-      statusInventory([
-        localTask({ lifecycle: "failed-to-launch", session: "unknown", worktrees: [] }),
-      ]),
+      statusInventory([localTask({ lifecycle: "failed-to-launch", session: "unknown", worktrees: [] })]),
       canonicalTask.id,
     );
-    expect(
-      getLifecycleAvailability({ ...canonicalTask, status: "in-progress" }, failedLaunch),
-    ).toEqual({ cleanup: true, resume: false, start: false, stop: false, done: true });
+    expect(getLifecycleAvailability({ ...canonicalTask, status: "in-progress" }, failedLaunch)).toEqual({
+      cleanup: true,
+      resume: false,
+      start: false,
+      stop: false,
+      done: true,
+    });
 
     expect(
       getLifecycleAvailability({
@@ -188,12 +184,13 @@ describe("lifecycle action availability", () => {
       naturalId: "tem-3897",
       title: canonicalTask.title,
     });
-    expect(
-      getLifecycleAvailability(
-        canonicalTask,
-        findLifecycleTask(missingInventory, canonicalTask.id),
-      ),
-    ).toEqual({ cleanup: false, resume: false, start: false, stop: false, done: true });
+    expect(getLifecycleAvailability(canonicalTask, findLifecycleTask(missingInventory, canonicalTask.id))).toEqual({
+      cleanup: false,
+      resume: false,
+      start: false,
+      stop: false,
+      done: true,
+    });
   });
 
   it("keeps provider-qualified tasks distinct when natural ids collide", () => {
@@ -227,10 +224,7 @@ describe("lifecycle action availability", () => {
 
   it("uses a source-less local status only when the canonical natural id is unique", () => {
     const inventory = statusInventory([localTask({ source: undefined })]);
-    const collidingTasks = [
-      canonicalTask,
-      { ...canonicalTask, id: "jira:tem-3897", source: "jira" },
-    ];
+    const collidingTasks = [canonicalTask, { ...canonicalTask, id: "jira:tem-3897", source: "jira" }];
 
     expect(findLifecycleTask(inventory, canonicalTask.id)).toBeUndefined();
     expect(findLifecycleTask(inventory, canonicalTask.id, [canonicalTask])).toMatchObject({
@@ -274,15 +268,11 @@ describe("lifecycle mutation feedback", () => {
 
     function Harness() {
       const controller = useLifecycleActionController({ mutations, reconcile });
-      return (
-        <LifecycleActions controller={controller} taskId={canonicalTask.id} task={canonicalTask} />
-      );
+      return <LifecycleActions controller={controller} taskId={canonicalTask.id} task={canonicalTask} />;
     }
 
     const renderer = await render(<Harness />);
-    const start = findByType(renderer, "raycast-action").find(
-      (action) => action.props.title === "Start Task",
-    );
+    const start = findByType(renderer, "raycast-action").find((action) => action.props.title === "Start Task");
     await act(async () => {
       await start?.props.onAction();
     });
@@ -362,9 +352,7 @@ describe("lifecycle mutation feedback", () => {
     const renderer = await render(<Harness />);
     let mutation: Promise<void> | undefined;
     await act(async () => {
-      const resume = findByType(renderer, "raycast-action").find(
-        (action) => action.props.title === "Resume Task",
-      );
+      const resume = findByType(renderer, "raycast-action").find((action) => action.props.title === "Resume Task");
       mutation = resume?.props.onAction();
       await Promise.resolve();
     });
@@ -416,45 +404,38 @@ describe("lifecycle mutation feedback", () => {
       },
       expectedMessage: "specific launch error",
     },
-  ])(
-    "surfaces the crew error for $result.kind and still reconciles",
-    async ({ result, expectedMessage }) => {
-      const toast = { message: undefined, primaryAction: undefined, style: "", title: "" };
-      vi.mocked(showToast).mockResolvedValue(toast as never);
-      const reconcile = vi.fn(async () => ({ statusRefreshed: true, taskRefreshed: true }));
+  ])("surfaces the crew error for $result.kind and still reconciles", async ({ result, expectedMessage }) => {
+    const toast = { message: undefined, primaryAction: undefined, style: "", title: "" };
+    vi.mocked(showToast).mockResolvedValue(toast as never);
+    const reconcile = vi.fn(async () => ({ statusRefreshed: true, taskRefreshed: true }));
 
-      function Harness() {
-        const controller = useLifecycleActionController({
-          mutations: {
-            startTask: vi.fn().mockResolvedValue(result),
-            stopTask: vi.fn(),
-            resumeTask: vi.fn(),
-            cleanupTask: vi.fn(),
-            completeTask: vi.fn(),
-          },
-          reconcile,
-        });
-        return (
-          <LifecycleActions controller={controller} taskId={canonicalTask.id} task={canonicalTask} />
-        );
-      }
-
-      const renderer = await render(<Harness />);
-      const start = findByType(renderer, "raycast-action").find(
-        (action) => action.props.title === "Start Task",
-      );
-      await act(async () => {
-        await start?.props.onAction();
+    function Harness() {
+      const controller = useLifecycleActionController({
+        mutations: {
+          startTask: vi.fn().mockResolvedValue(result),
+          stopTask: vi.fn(),
+          resumeTask: vi.fn(),
+          cleanupTask: vi.fn(),
+          completeTask: vi.fn(),
+        },
+        reconcile,
       });
+      return <LifecycleActions controller={controller} taskId={canonicalTask.id} task={canonicalTask} />;
+    }
 
-      expect(reconcile).toHaveBeenCalledWith(canonicalTask.id);
-      expect(toast).toMatchObject({
-        style: "failure",
-        title: "Couldn’t Start Task",
-        message: expectedMessage,
-      });
-    },
-  );
+    const renderer = await render(<Harness />);
+    const start = findByType(renderer, "raycast-action").find((action) => action.props.title === "Start Task");
+    await act(async () => {
+      await start?.props.onAction();
+    });
+
+    expect(reconcile).toHaveBeenCalledWith(canonicalTask.id);
+    expect(toast).toMatchObject({
+      style: "failure",
+      title: "Couldn’t Start Task",
+      message: expectedMessage,
+    });
+  });
 });
 
 describe("lifecycle action inputs", () => {
@@ -536,9 +517,7 @@ describe("lifecycle action inputs", () => {
     }
 
     const renderer = await render(<Harness />);
-    const cleanup = findByType(renderer, "raycast-action").find(
-      (action) => action.props.title === "Cleanup Task",
-    );
+    const cleanup = findByType(renderer, "raycast-action").find((action) => action.props.title === "Cleanup Task");
     vi.mocked(confirmAlert).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     await act(async () => {
       await cleanup?.props.onAction();
@@ -557,10 +536,7 @@ describe("lifecycle action inputs", () => {
         }),
       }),
     );
-    expect(cleanupTask).toHaveBeenCalledWith(
-      "tem-3897",
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
+    expect(cleanupTask).toHaveBeenCalledWith("tem-3897", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("passes force to a confirmed force cleanup", async () => {

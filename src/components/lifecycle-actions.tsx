@@ -1,14 +1,4 @@
-import {
-  Action,
-  ActionPanel,
-  Alert,
-  confirmAlert,
-  Form,
-  Icon,
-  showToast,
-  Toast,
-  useNavigation,
-} from "@raycast/api";
+import { Action, ActionPanel, Alert, confirmAlert, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { GroundcrewClient } from "../cli";
@@ -109,10 +99,7 @@ export function naturalTaskId(taskId: string): string {
   return separator < 0 ? normalized : normalized.slice(separator + 1);
 }
 
-export function findCanonicalTask(
-  tasks: readonly GroundcrewTask[],
-  taskId: string,
-): GroundcrewTask | undefined {
+export function findCanonicalTask(tasks: readonly GroundcrewTask[], taskId: string): GroundcrewTask | undefined {
   const normalized = normalizedTaskId(taskId);
   if (isCanonicalTaskId(normalized)) {
     return tasks.find((task) => normalizedTaskId(task.id) === normalized);
@@ -138,8 +125,7 @@ export function findLifecycleTask(
   const normalized = normalizedTaskId(taskId);
   const matches = selections.filter((selection) => {
     if (isCanonicalTaskId(normalized)) {
-      const canonicalId =
-        selection.kind === "local" ? selection.task.source?.id : selection.task.id;
+      const canonicalId = selection.kind === "local" ? selection.task.source?.id : selection.task.id;
       return canonicalId !== undefined && normalizedTaskId(canonicalId) === normalized;
     }
     const naturalId = selection.kind === "local" ? selection.task.task : selection.task.naturalId;
@@ -163,8 +149,7 @@ export function getLifecycleAvailability(
   task?: GroundcrewTask,
   status?: LifecycleTaskSelection,
 ): LifecycleAvailability {
-  const canonicalStartEligible =
-    task?.status === "todo" && task.blockers.length === 0 && !task.hasMoreBlockers;
+  const canonicalStartEligible = task?.status === "todo" && task.blockers.length === 0 && !task.hasMoreBlockers;
   const local = status?.kind === "local" ? status.task : undefined;
   const hasPreservedWorktree = (local?.worktrees.length ?? 0) > 0;
   return {
@@ -212,9 +197,7 @@ function reconciliationMessage(reconciliation: LifecycleReconciliation): string 
   if (!reconciliation.taskRefreshed || !reconciliation.statusRefreshed) {
     details.push("Refresh incomplete");
   }
-  return details.length === 0
-    ? "Task is absent from refreshed task and status data."
-    : details.join(" · ");
+  return details.length === 0 ? "Task is absent from refreshed task and status data." : details.join(" · ");
 }
 
 export function lifecycleErrorDetail(result: GroundcrewLifecycleResult): string | undefined {
@@ -411,11 +394,7 @@ function StopTaskForm({
         </ActionPanel>
       }
     >
-      <Form.TextArea
-        id="reason"
-        title="Reason"
-        placeholder="Optional reason for stopping this task"
-      />
+      <Form.TextArea id="reason" title="Reason" placeholder="Optional reason for stopping this task" />
     </Form>
   );
 }
@@ -486,9 +465,7 @@ export function LifecycleActions({
             <Action.Push
               title="Stop with Reason"
               icon={Icon.Pencil}
-              target={
-                <StopTaskForm controller={controller} taskId={taskId} targetTaskId={localTaskId} />
-              }
+              target={<StopTaskForm controller={controller} taskId={taskId} targetTaskId={localTaskId} />}
             />
           </>
         )
@@ -506,9 +483,7 @@ export function LifecycleActions({
             <Action
               title="Resume with New Session"
               icon={Icon.ArrowClockwise}
-              onAction={() =>
-                controller.run("resume", taskId, { targetTaskId: localTaskId, newSession: true })
-              }
+              onAction={() => controller.run("resume", taskId, { targetTaskId: localTaskId, newSession: true })}
             />
           </>
         )

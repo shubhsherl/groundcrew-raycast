@@ -73,9 +73,7 @@ function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
 }
 
-export async function resolveCrewExecutable(
-  options: ResolveCrewExecutableOptions = {},
-): Promise<string> {
+export async function resolveCrewExecutable(options: ResolveCrewExecutableOptions = {}): Promise<string> {
   const configuredPath = options.configuredPath?.trim();
   if (configuredPath !== undefined && configuredPath.length > 0) {
     if (!path.isAbsolute(configuredPath)) {
@@ -108,11 +106,7 @@ export async function resolveCrewExecutable(
   const homebrewCandidates = options.homebrewPaths ?? DEFAULT_HOMEBREW_PATHS;
   const homeDirectory = options.homeDirectory ?? homedir();
   const nvmDirectory = environment.NVM_DIR ?? path.join(homeDirectory, ".nvm");
-  const candidates = unique([
-    ...pathCandidates,
-    ...homebrewCandidates,
-    ...(await nvmCandidates(nvmDirectory)),
-  ]);
+  const candidates = unique([...pathCandidates, ...homebrewCandidates, ...(await nvmCandidates(nvmDirectory))]);
   const nonExecutable: string[] = [];
 
   for (const candidate of candidates) {

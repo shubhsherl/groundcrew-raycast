@@ -26,10 +26,7 @@ export default function Command() {
     };
   }, [crewPath]);
   const loadTasks = useCallback(async () => (await getClient()).listTasks(), [getClient]);
-  const loadTask = useCallback(
-    async (taskId: string) => (await getClient()).getTask(taskId),
-    [getClient],
-  );
+  const loadTask = useCallback(async (taskId: string) => (await getClient()).getTask(taskId), [getClient]);
   const loadStatus = useCallback(async () => (await getClient()).getStatus(), [getClient]);
   const mutations = useMemo<LifecycleMutations>(
     () => ({
@@ -42,12 +39,5 @@ export default function Command() {
     [getClient],
   );
 
-  return (
-    <TaskBrowser
-      loadTasks={loadTasks}
-      loadTask={loadTask}
-      loadStatus={loadStatus}
-      mutations={mutations}
-    />
-  );
+  return <TaskBrowser loadTasks={loadTasks} loadTask={loadTask} loadStatus={loadStatus} mutations={mutations} />;
 }

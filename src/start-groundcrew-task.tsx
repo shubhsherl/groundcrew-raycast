@@ -53,20 +53,14 @@ export default function Command(props: LaunchProps<{ arguments: Arguments }>) {
     async (reconcileTaskId: string) => {
       try {
         const client = await getClient();
-        const [tasksResult, statusResult] = await Promise.allSettled([
-          client.listTasks(),
-          client.getStatus(),
-        ]);
+        const [tasksResult, statusResult] = await Promise.allSettled([client.listTasks(), client.getStatus()]);
         const tasks = tasksResult.status === "fulfilled" ? tasksResult.value : undefined;
         const status = statusResult.status === "fulfilled" ? statusResult.value : undefined;
         return {
           taskRefreshed: tasks !== undefined,
           task: tasks !== undefined ? findCanonicalTask(tasks, reconcileTaskId) : undefined,
           statusRefreshed: status !== undefined,
-          status:
-            status !== undefined
-              ? findLifecycleTask(status, reconcileTaskId, tasks)
-              : undefined,
+          status: status !== undefined ? findLifecycleTask(status, reconcileTaskId, tasks) : undefined,
         };
       } catch {
         return { taskRefreshed: false, statusRefreshed: false };
@@ -85,10 +79,5 @@ export default function Command(props: LaunchProps<{ arguments: Arguments }>) {
     }
   }, [controller, taskId]);
 
-  return (
-    <Detail
-      markdown={`## Starting Task\n\n\`${rawInput}\``}
-      isLoading={controller.isMutating(taskId)}
-    />
-  );
+  return <Detail markdown={`## Starting Task\n\n\`${rawInput}\``} isLoading={controller.isMutating(taskId)} />;
 }

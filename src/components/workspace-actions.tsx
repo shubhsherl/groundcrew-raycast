@@ -26,10 +26,7 @@ function resolveCmux(): string | undefined {
   return CMUX_CANDIDATES.find((candidate) => existsSync(candidate));
 }
 
-function runCommand(
-  command: string,
-  args: readonly string[],
-): Promise<{ code: number | null; stdout: string }> {
+function runCommand(command: string, args: readonly string[]): Promise<{ code: number | null; stdout: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, [...args], { stdio: ["ignore", "pipe", "ignore"] });
     let stdout = "";
@@ -128,9 +125,7 @@ export function WorkspaceActions({
         editor === undefined || editor.length === 0 ? (
           <Action.OpenWith
             key={`editor:${worktree.dir}`}
-            title={
-              dirs.length === 1 ? "Open Worktree with…" : `Open ${worktree.repository} Worktree With…`
-            }
+            title={dirs.length === 1 ? "Open Worktree with…" : `Open ${worktree.repository} Worktree With…`}
             path={worktree.dir.trim()}
           />
         ) : (

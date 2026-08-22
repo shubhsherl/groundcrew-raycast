@@ -54,10 +54,7 @@ interface AsyncState<T> {
   value?: T;
 }
 
-type ReloadResult<T> =
-  | { kind: "success"; value: T }
-  | { kind: "failure"; error: unknown }
-  | { kind: "stale" };
+type ReloadResult<T> = { kind: "success"; value: T } | { kind: "failure"; error: unknown } | { kind: "stale" };
 
 interface StatusErrorPresentation {
   description: string;
@@ -233,9 +230,7 @@ function isActiveTask(task: GroundcrewStatusTask): boolean {
   return (
     task.worktrees.length > 0 &&
     task.session !== "exited" &&
-    (task.lifecycle === "provisioning" ||
-      task.lifecycle === "running" ||
-      task.lifecycle === "resumed")
+    (task.lifecycle === "provisioning" || task.lifecycle === "running" || task.lifecycle === "resumed")
   );
 }
 
@@ -295,9 +290,7 @@ function localTaskSubtitle(task: GroundcrewStatusTask): string {
   const worktree = task.worktrees[0];
   const repository = task.source?.repository ?? worktree?.repository ?? "Repository unavailable";
   const branch = worktree?.branch;
-  return branch === undefined
-    ? `${task.task} · ${repository}`
-    : `${task.task} · ${repository} · ${branch}`;
+  return branch === undefined ? `${task.task} · ${repository}` : `${task.task} · ${repository} · ${branch}`;
 }
 
 function localTaskId(task: GroundcrewStatusTask): string {
@@ -416,10 +409,7 @@ function QueueReadyRow({
       subtitle={`${issue.naturalId} · ${issue.repository}`}
       icon={{ source: Icon.CircleProgress, tintColor: Color.Blue }}
       keywords={[issue.naturalId, issue.repository, issue.agent, "ready", "eligible"]}
-      accessories={[
-        { text: issue.agent, icon: Icon.Person },
-        { tag: { value: "Ready", color: Color.Blue } },
-      ]}
+      accessories={[{ text: issue.agent, icon: Icon.Person }, { tag: { value: "Ready", color: Color.Blue } }]}
       actions={
         <TaskRowActions
           inventory={inventory}
@@ -566,13 +556,7 @@ function WorkspaceProbeRow({
   );
 }
 
-function OrphanedSessionsRow({
-  onRefresh,
-  sessions,
-}: {
-  onRefresh: () => Promise<void>;
-  sessions: string[];
-}) {
+function OrphanedSessionsRow({ onRefresh, sessions }: { onRefresh: () => Promise<void>; sessions: string[] }) {
   return (
     <List.Item
       id="orphaned-sessions"
@@ -619,9 +603,7 @@ function selectionTitle(selection: StatusTaskSelection): string {
 }
 
 function firstNonBlank(values: readonly (string | undefined)[]): string | undefined {
-  return values
-    .map((value) => value?.trim())
-    .find((value) => value !== undefined && value.length > 0);
+  return values.map((value) => value?.trim()).find((value) => value !== undefined && value.length > 0);
 }
 
 function selectionUrl(selection: StatusTaskSelection): string | undefined {
@@ -632,9 +614,7 @@ function selectionUrl(selection: StatusTaskSelection): string | undefined {
 
 function selectionAgent(selection: StatusTaskSelection): string {
   const value =
-    selection.kind === "local"
-      ? (selection.task.agent ?? selection.task.source?.agent)
-      : selection.task.agent;
+    selection.kind === "local" ? (selection.task.agent ?? selection.task.source?.agent) : selection.task.agent;
   return value ?? "Not supplied by legacy status";
 }
 
@@ -643,9 +623,7 @@ function selectionRepository(selection: StatusTaskSelection): string {
     return selection.task.repository ?? "Not supplied by legacy status";
   }
   return (
-    selection.task.source?.repository ??
-    selection.task.worktrees[0]?.repository ??
-    "Not supplied by legacy status"
+    selection.task.source?.repository ?? selection.task.worktrees[0]?.repository ?? "Not supplied by legacy status"
   );
 }
 
@@ -708,9 +686,7 @@ function selectionDirtiness(selection: StatusTaskSelection): string {
   }
   if (selection.task.worktrees.length === 1) {
     const worktree = selection.task.worktrees[0];
-    return worktree === undefined
-      ? "Unavailable without a local worktree"
-      : worktreeDirtiness(worktree);
+    return worktree === undefined ? "Unavailable without a local worktree" : worktreeDirtiness(worktree);
   }
   return selection.task.worktrees
     .map((worktree) => `${worktree.repository}: ${worktreeDirtiness(worktree)}`)
@@ -718,9 +694,7 @@ function selectionDirtiness(selection: StatusTaskSelection): string {
 }
 
 function selectionPullRequests(selection: StatusTaskSelection) {
-  return selection.kind === "local"
-    ? selection.task.worktrees.flatMap((worktree) => worktree.pullRequests)
-    : [];
+  return selection.kind === "local" ? selection.task.worktrees.flatMap((worktree) => worktree.pullRequests) : [];
 }
 
 function ambiguousPullRequestWorktrees(selection: StatusTaskSelection): GroundcrewStatusWorktree[] {
@@ -737,9 +711,7 @@ function pullRequestSummary(selection: StatusTaskSelection): string {
   const pullRequests = selectionPullRequests(selection);
   const ambiguousWorktrees = ambiguousPullRequestWorktrees(selection);
   const summaries = [
-    ...pullRequests.map(
-      (pullRequest) => `#${pullRequest.number} · ${pullRequest.state} · ${pullRequest.title}`,
-    ),
+    ...pullRequests.map((pullRequest) => `#${pullRequest.number} · ${pullRequest.state} · ${pullRequest.title}`),
     ...ambiguousWorktrees.map(ambiguousPullRequestSummary),
   ];
   if (summaries.length > 0) {
@@ -783,9 +755,7 @@ function selectionMarkdown(selection: StatusTaskSelection): string {
     task.flags.length === 0 ? undefined : `- **Flags:** ${task.flags.join(", ")}`,
   ].filter((line): line is string => line !== undefined);
   const recentLogs =
-    task.recentLogLines.length === 0
-      ? []
-      : ["", "## Recent Output", "", "```text", ...task.recentLogLines, "```"];
+    task.recentLogLines.length === 0 ? [] : ["", "## Recent Output", "", "```text", ...task.recentLogLines, "```"];
   return [
     `# ${selectionTitle(selection)}`,
     ...(operationalNotes.length === 0 ? [] : ["", "## Operational Notes", "", ...operationalNotes]),
@@ -812,18 +782,14 @@ function StatusWorkspaceActions({ selection }: { selection: StatusTaskSelection 
     <WorkspaceActions
       worktrees={worktrees}
       taskId={selection.task.task}
-      {...(selection.task.attachCommand === undefined
-        ? {}
-        : { attachCommand: selection.task.attachCommand })}
+      {...(selection.task.attachCommand === undefined ? {} : { attachCommand: selection.task.attachCommand })}
     />
   );
 }
 
 function TaskResourceActions({ selection }: { selection: StatusTaskSelection }) {
   const url = selectionUrl(selection);
-  const pullRequests = selectionPullRequests(selection).filter(
-    (pullRequest) => pullRequest.url.trim().length > 0,
-  );
+  const pullRequests = selectionPullRequests(selection).filter((pullRequest) => pullRequest.url.trim().length > 0);
   const worktrees = localWorktrees(selection);
   return (
     <>
@@ -838,11 +804,7 @@ function TaskResourceActions({ selection }: { selection: StatusTaskSelection }) 
       {worktrees.map((worktree) => (
         <Action.Open
           key={worktree.dir}
-          title={
-            worktrees.length === 1
-              ? "Open Worktree in Finder"
-              : `Open ${worktree.repository} Worktree in Finder`
-          }
+          title={worktrees.length === 1 ? "Open Worktree in Finder" : `Open ${worktree.repository} Worktree in Finder`}
           icon={Icon.Finder}
           target={worktree.dir.trim()}
           application="Finder"
@@ -903,9 +865,7 @@ function TaskRowActions({
       <Action.Push
         title="Show Task Details"
         icon={Icon.Sidebar}
-        target={
-          <StatusTaskDetail inventory={inventory} naturalTaskId={selectionTaskId(selection)} />
-        }
+        target={<StatusTaskDetail inventory={inventory} naturalTaskId={selectionTaskId(selection)} />}
       />
       {cleanupAllAction}
       <TaskResourceActions selection={selection} />
@@ -945,29 +905,16 @@ export function StatusTaskDetail({
           <Detail.Metadata.Label title="Lifecycle" text={selectionLifecycle(selection)} />
           <Detail.Metadata.Label
             title="Session"
-            text={
-              localTask === undefined
-                ? "Not supplied by legacy status"
-                : canonicalStatusTitle(localTask.session)
-            }
+            text={localTask === undefined ? "Not supplied by legacy status" : canonicalStatusTitle(localTask.session)}
           />
           <Detail.Metadata.Label title="Agent" text={selectionAgent(selection)} />
-          <Detail.Metadata.Label
-            title="Started"
-            text={localTask?.startedAt ?? "Not supplied by legacy status"}
-          />
-          <Detail.Metadata.Label
-            title="Updated"
-            text={localTask?.updatedAt ?? "Not supplied by legacy status"}
-          />
+          <Detail.Metadata.Label title="Started" text={localTask?.startedAt ?? "Not supplied by legacy status"} />
+          <Detail.Metadata.Label title="Updated" text={localTask?.updatedAt ?? "Not supplied by legacy status"} />
           <Detail.Metadata.Label title="Source Status" text={selectionSourceStatus(selection)} />
           <Detail.Metadata.Label title="Repository" text={selectionRepository(selection)} />
           <Detail.Metadata.Label title="Branch" text={branches || "Unavailable"} />
           <Detail.Metadata.Label title="Worktree Dirtiness" text={selectionDirtiness(selection)} />
-          <Detail.Metadata.Label
-            title="Blockers / Eligibility"
-            text={selectionEligibility(selection)}
-          />
+          <Detail.Metadata.Label title="Blockers / Eligibility" text={selectionEligibility(selection)} />
           <Detail.Metadata.Label
             title="Workspace"
             text={
@@ -977,9 +924,7 @@ export function StatusTaskDetail({
             }
           />
           <Detail.Metadata.Label title="Pull Requests" text={pullRequestSummary(selection)} />
-          {taskUrl === undefined ? null : (
-            <Detail.Metadata.Link title="Task URL" target={taskUrl} text={taskUrl} />
-          )}
+          {taskUrl === undefined ? null : <Detail.Metadata.Link title="Task URL" target={taskUrl} text={taskUrl} />}
         </Detail.Metadata>
       }
       actions={
@@ -1019,42 +964,28 @@ function errorPresentation(error: unknown): StatusErrorPresentation {
   return { description, showPreferences: false, title: "Couldn’t Load Groundcrew Status" };
 }
 
-function StatusActions({
-  onRefresh,
-  showPreferences,
-}: {
-  onRefresh: () => Promise<void>;
-  showPreferences: boolean;
-}) {
+function StatusActions({ onRefresh, showPreferences }: { onRefresh: () => Promise<void>; showPreferences: boolean }) {
   return (
     <ActionPanel>
       <RefreshStatusAction onRefresh={onRefresh} />
       {showPreferences ? (
         <>
           <Action.Push title="Run Doctor" icon={Icon.Stethoscope} target={<GroundcrewDoctor />} />
-          <Action
-            title="Open Extension Preferences"
-            icon={Icon.Gear}
-            onAction={openExtensionPreferences}
-          />
-          <Action.OpenInBrowser
-            title="Install Groundcrew CLI"
-            icon={Icon.Download}
-            url={GROUNDCREW_INSTALL_URL}
-          />
+          <Action title="Open Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
+          <Action.OpenInBrowser title="Install Groundcrew CLI" icon={Icon.Download} url={GROUNDCREW_INSTALL_URL} />
         </>
       ) : null}
     </ActionPanel>
   );
 }
 
-export function StatusDashboard({
-  cleanupAllTasks,
-  loadStatus,
-  loadTasks,
-  mutations,
-}: StatusDashboardProps) {
-  const { error, isLoading, reload, value: inventory } = useAsyncValue(loadStatus, {
+export function StatusDashboard({ cleanupAllTasks, loadStatus, loadTasks, mutations }: StatusDashboardProps) {
+  const {
+    error,
+    isLoading,
+    reload,
+    value: inventory,
+  } = useAsyncValue(loadStatus, {
     cacheKey: "groundcrew.status",
     revalidateIntervalMs: 8000,
   });
@@ -1066,13 +997,9 @@ export function StatusDashboard({
       const [statusResult, taskResult] = await Promise.all([reload(), reloadTasks()]);
       return {
         statusRefreshed: statusResult.kind === "success",
-        ...(statusResult.kind === "success"
-          ? { status: findLifecycleTask(statusResult.value, taskId) }
-          : {}),
+        ...(statusResult.kind === "success" ? { status: findLifecycleTask(statusResult.value, taskId) } : {}),
         taskRefreshed: taskResult.kind === "success",
-        ...(taskResult.kind === "success"
-          ? { task: findCanonicalTask(taskResult.value, taskId) }
-          : {}),
+        ...(taskResult.kind === "success" ? { task: findCanonicalTask(taskResult.value, taskId) } : {}),
       };
     },
     [reload, reloadTasks],
@@ -1090,16 +1017,11 @@ export function StatusDashboard({
   }, [reload]);
   const presentation = error === undefined ? undefined : errorPresentation(error);
   const activeTasks = inventory?.tasks.filter(isActiveTask) ?? [];
-  const preservedTasks =
-    inventory?.tasks.filter((task) => task.worktrees.length > 0 && !isActiveTask(task)) ?? [];
+  const preservedTasks = inventory?.tasks.filter((task) => task.worktrees.length > 0 && !isActiveTask(task)) ?? [];
   const missingLocalTasks = inventory?.tasks.filter((task) => task.worktrees.length === 0) ?? [];
   const cleanupAllAction =
     cleanupAllTasks !== undefined && preservedTasks.length > 0 ? (
-      <CleanupAllWorkspacesAction
-        cleanupAllTasks={cleanupAllTasks}
-        count={preservedTasks.length}
-        onRefresh={refresh}
-      />
+      <CleanupAllWorkspacesAction cleanupAllTasks={cleanupAllTasks} count={preservedTasks.length} onRefresh={refresh} />
     ) : undefined;
   const degraded =
     inventory !== undefined &&
@@ -1119,32 +1041,17 @@ export function StatusDashboard({
       isLoading={isLoading}
       filtering={{ keepSectionOrder: true }}
       searchBarPlaceholder="Search tasks, repositories, branches, or agents"
-      actions={
-        <StatusActions
-          onRefresh={refresh}
-          showPreferences={presentation?.showPreferences ?? false}
-        />
-      }
+      actions={<StatusActions onRefresh={refresh} showPreferences={presentation?.showPreferences ?? false} />}
     >
       {inventory === undefined || showHealthyEmpty ? (
         <List.EmptyView
-          title={
-            inventory === undefined
-              ? (presentation?.title ?? "Loading Groundcrew Status")
-              : "No Groundcrew Work"
-          }
+          title={inventory === undefined ? (presentation?.title ?? "Loading Groundcrew Status") : "No Groundcrew Work"}
           description={
             inventory === undefined
-              ? (presentation?.description ??
-                "Loading local workspaces and the latest remote Groundcrew inventory.")
+              ? (presentation?.description ?? "Loading local workspaces and the latest remote Groundcrew inventory.")
               : `${slotUsageText(inventory)}. Local captured ${inventory.localCapturedAt}; ${remoteSnapshotText(inventory)}.`
           }
-          actions={
-            <StatusActions
-              onRefresh={refresh}
-              showPreferences={presentation?.showPreferences ?? false}
-            />
-          }
+          actions={<StatusActions onRefresh={refresh} showPreferences={presentation?.showPreferences ?? false} />}
         />
       ) : null}
       {inventory !== undefined && activeTasks.length > 0 ? (
@@ -1176,8 +1083,7 @@ export function StatusDashboard({
           ))}
         </List.Section>
       ) : null}
-      {inventory !== undefined &&
-      (missingLocalTasks.length > 0 || inventory.inProgressWithoutWorktree.length > 0) ? (
+      {inventory !== undefined && (missingLocalTasks.length > 0 || inventory.inProgressWithoutWorktree.length > 0) ? (
         <List.Section
           title="Missing Workspaces"
           subtitle={`${missingLocalTasks.length + inventory.inProgressWithoutWorktree.length}`}
