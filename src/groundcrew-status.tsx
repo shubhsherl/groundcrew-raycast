@@ -33,9 +33,21 @@ export default function Command() {
       stopTask: async (taskId, options) => (await getClient()).stopTask(taskId, options),
       resumeTask: async (taskId, options) => (await getClient()).resumeTask(taskId, options),
       cleanupTask: async (taskId, options) => (await getClient()).cleanupTask(taskId, options),
+      completeTask: async (taskId, options) => (await getClient()).completeTask(taskId, options),
     }),
     [getClient],
   );
+  const cleanupAllTasks = useCallback(
+    async (options?: { force?: boolean }) => (await getClient()).cleanupAllTasks(options),
+    [getClient],
+  );
 
-  return <StatusDashboard loadStatus={loadStatus} loadTasks={loadTasks} mutations={mutations} />;
+  return (
+    <StatusDashboard
+      loadStatus={loadStatus}
+      loadTasks={loadTasks}
+      mutations={mutations}
+      cleanupAllTasks={cleanupAllTasks}
+    />
+  );
 }
