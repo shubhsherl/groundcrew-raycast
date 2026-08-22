@@ -259,8 +259,11 @@ describe("client startup and task JSON", () => {
 
     await expect(client.listTasks()).resolves.toEqual([task]);
     await expect(client.getTask("TEM-3894")).resolves.toEqual(task);
-    await expect(readArgvLog(fake.logPath)).resolves.toEqual([
-      ["--version"],
+    const argv = await readArgvLog(fake.logPath);
+    // The version check runs concurrently with the first data call, so its position
+    // relative to the first command is unspecified; assert presence and data order.
+    expect(argv.filter((entry) => entry[0] === "--version")).toEqual([["--version"]]);
+    expect(argv.filter((entry) => entry[0] !== "--version")).toEqual([
       ["task", "list", "--json"],
       ["task", "get", "TEM-3894", "--json"],
     ]);
@@ -269,18 +272,36 @@ describe("client startup and task JSON", () => {
   it.each([
     ["4.50.2", "INCOMPATIBLE_VERSION"],
     ["Groundcrew 4.50.3", "MALFORMED_VERSION"],
-  ])("rejects version output %s", async (version, code) => {
+  ])("rejects version output %s on first use", async (version, code) => {
     const root = await makeTemporaryDirectory();
     const fake = await makeFakeCrew(root, {
       [responseKey("--version")]: { stdout: `${version}\n` },
     });
+    // The client resolves immediately; the version is validated on the first command.
+    const client = await createGroundcrewClient({
+      executablePath: fake.executablePath,
+      environment: fake.environment,
+    });
 
-    await expect(
-      createGroundcrewClient({
-        executablePath: fake.executablePath,
-        environment: fake.environment,
-      }),
-    ).rejects.toMatchObject({ code });
+    await expect(client.getStatus()).rejects.toMatchObject({ code });
+  });
+
+  it("runs doctor without a version gate", async () => {
+    const root = await makeTemporaryDirectory();
+    // No `--version` response: doctor must run even when the CLI is incompatible.
+    const fake = await makeFakeCrew(root, {
+      [responseKey("doctor")]: { stdout: "groundcrew doctor\n[ok] config loaded\n" },
+    });
+    const client = await createGroundcrewClient({
+      executablePath: fake.executablePath,
+      environment: fake.environment,
+    });
+
+    await expect(client.runDoctor()).resolves.toMatchObject({
+      kind: "success",
+      stdout: "groundcrew doctor\n[ok] config loaded\n",
+    });
+    await expect(readArgvLog(fake.logPath)).resolves.toEqual([["doctor"]]);
   });
 
   it("rejects malformed JSON and command-specific shape mismatches", async () => {
@@ -325,7 +346,9 @@ describe("legacy status adapter", () => {
     expect(status.tasks[0]?.worktrees[0]?.pullRequests[0]?.number).toBe(2);
     expect(status.inProgressWithoutWorktree).toEqual([]);
     expect(status.queueReady).toEqual([]);
-    await expect(readArgvLog(fake.logPath)).resolves.toEqual([["--version"], ["status", "--json"]]);
+    const argv = await readArgvLog(fake.logPath);
+    expect(argv.filter((entry) => entry[0] === "--version")).toEqual([["--version"]]);
+    expect(argv.filter((entry) => entry[0] !== "--version")).toEqual([["status", "--json"]]);
   });
 
   it("rejects an unknown legacy schema version", async () => {
@@ -373,7 +396,9 @@ describe("legacy status adapter", () => {
     expect(status.inProgressWithoutWorktree).toHaveLength(1);
     expect(status.tasks[0]?.worktrees[0]?.pullRequests).toEqual([]);
     expect(status.slots).toEqual({ used: 2, maximum: 3 });
-    await expect(readArgvLog(fake.logPath)).resolves.toEqual([["--version"], ["status", "--json"]]);
+    const argv = await readArgvLog(fake.logPath);
+    expect(argv.filter((entry) => entry[0] === "--version")).toEqual([["--version"]]);
+    expect(argv.filter((entry) => entry[0] !== "--version")).toEqual([["status", "--json"]]);
   });
 
   it("preserves local workspaces when an unavailable remote attempt has no payload", async () => {
@@ -429,7 +454,10 @@ describe("legacy status adapter", () => {
     });
 
     await expect(client.getStatus("   ")).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
-    await expect(readArgvLog(fake.logPath)).resolves.toEqual([["--version"]]);
+    // The blank argument is rejected before any crew process spawns, including the version
+    // check, so no argv log is ever written.
+    const argv = await readArgvLog(fake.logPath).catch(() => []);
+    expect(argv).toEqual([]);
   });
 });
 
@@ -501,11 +529,42 @@ describe("lifecycle process results", () => {
     await expect(client.startTask("missing-now")).resolves.toMatchObject({
       kind: "launch-failure",
     });
-    await expect(readArgvLog(fake.logPath)).resolves.toEqual([
-      ["--version"],
+    const argv = await readArgvLog(fake.logPath);
+    expect(argv.filter((entry) => entry[0] === "--version")).toEqual([["--version"]]);
+    expect(argv.filter((entry) => entry[0] !== "--version")).toEqual([
       ["start", "failure"],
       ["cleanup", "slow"],
       ["resume", "cancel-me"],
+    ]);
+  });
+});
+
+describe("workspace and completion commands", () => {
+  it("maps open, resume --new, and task done to argv", async () => {
+    const root = await makeTemporaryDirectory();
+    const fake = await makeFakeCrew(root, {
+      [responseKey("--version")]: { stdout: `${MINIMUM_GROUNDCREW_VERSION}\n` },
+      [responseKey("open", "123")]: { stdout: "" },
+      [responseKey("open", "--branch", "feature/x")]: { stdout: "" },
+      [responseKey("resume", "--new", "tem-1")]: { stdout: "" },
+      [responseKey("task", "done", "tem-1")]: { stdout: "" },
+    });
+    const client = await createGroundcrewClient({
+      executablePath: fake.executablePath,
+      environment: fake.environment,
+    });
+
+    await client.openWorkspace("123");
+    await client.openWorkspace("feature/x", { kind: "branch" });
+    await client.resumeTask("tem-1", { newSession: true });
+    await client.completeTask("tem-1");
+
+    const argv = await readArgvLog(fake.logPath);
+    expect(argv.filter((entry) => entry[0] !== "--version")).toEqual([
+      ["open", "123"],
+      ["open", "--branch", "feature/x"],
+      ["resume", "--new", "tem-1"],
+      ["task", "done", "tem-1"],
     ]);
   });
 });
