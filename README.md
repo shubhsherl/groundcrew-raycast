@@ -1,101 +1,114 @@
 # Groundcrew for Raycast
 
-Browse Groundcrew tasks and check Groundcrew status without leaving Raycast.
+Browse, monitor, and operate [Groundcrew](https://www.npmjs.com/package/@clipboard-health/groundcrew) tasks without leaving Raycast. Groundcrew dispatches coding agents to work on your tasks in isolated git worktrees; this extension is a control panel for the tasks and workspaces its CLI manages.
 
 > [!IMPORTANT]
-> This extension requires the Groundcrew CLI to be installed and configured on your Mac. The extension does not store
-> provider credentials; it uses the CLI's existing local configuration.
-
-## Prerequisites
-
-- macOS with [Raycast](https://www.raycast.com/) installed
-- Groundcrew CLI `4.50.3` or newer, installed and configured by the user
-- The `crew` executable discoverable as described below, or its absolute path entered in the extension preference
+> This extension drives the **Groundcrew CLI** installed on your Mac. It never stores or transmits credentials — the CLI owns all configuration, credentials, and task state. You must install and configure Groundcrew before using the extension.
 
 ## Commands
 
-- **Browse Groundcrew Tasks** — searches and filters canonical tasks from every configured Groundcrew source, with
-  on-demand task details and links
-- **Groundcrew Status** — shows active and preserved workspaces, missing worktrees, queue and slot health, and degraded
-  local or remote probes
+- **Browse Groundcrew Tasks** — search and filter tasks from every configured source, open task details, and jump to task URLs, pull requests, and worktrees. Start a task or act on its workspace.
+- **Groundcrew Status** — see active, preserved, and missing workspaces, queue and slot health, and degraded probes. Run lifecycle actions per workspace (Start, Stop, Stop with Reason, Stop & Clean Up, Resume, Cleanup) and bulk "Clean Up All Idle Workspaces". Cleanup skips worktrees with uncommitted changes; an explicit **Force** variant removes them too (with a confirmation). For a live task, Enter opens its cmux workspace; for an idle or interrupted one, Enter resumes it.
+- **Start Groundcrew Task** — start a task by ticket number (`tem-3925` or `linear:tem-3925`), even one that isn't in the browse list.
+- **Open Groundcrew Workspace** — open an existing pull request or branch in a Groundcrew worktree.
+- **Groundcrew Doctor** — diagnose host prerequisites, configuration, and Linear reachability by running `crew doctor`.
 
-Task browsing reads through `crew task list --json` and `crew task get <task> --json`. Groundcrew remains responsible
-for source configuration and canonical task fields; the extension does not contact providers directly.
+## Prerequisites
 
-Status always loads the complete legacy `crew status --json` `{ local, remote }` inventory and filters task detail in
-the extension. It never invokes task-scoped status JSON. Local capture, remote attempt, and retained remote payload
-timestamps are shown separately because they can differ. When a remote attempt fails, an older payload can remain and
-is labeled as potentially stale. An empty pull-request result is treated as unknown because the legacy response cannot
-distinguish “no pull request” from a failed GitHub lookup; the extension creates PR actions only for supplied URLs.
+1. **macOS** with [Raycast](https://www.raycast.com/) installed.
+2. **Groundcrew CLI `4.50.3` or newer**, installed and configured:
+   ```sh
+   npm install -g @clipboard-health/groundcrew
+   ```
+   Configure it (source, credentials, and defaults) per the Groundcrew docs. The extension reads whatever the CLI is already set up to use.
 
 ## Configuration
 
-The optional **Groundcrew Executable Path** preference accepts an absolute path such as
-`/opt/homebrew/bin/crew`. When it is empty, the extension searches executable files named `crew` in this order:
+**Groundcrew Executable Path** (optional) — an absolute path to the `crew` executable, e.g. `/opt/homebrew/bin/crew`. Leave it blank to auto-discover `crew` from Raycast's `PATH`, then `/opt/homebrew/bin` and `/usr/local/bin`, then an nvm install (`$NVM_DIR/versions/node/*/bin`, newest first).
 
-1. Raycast's process `PATH`.
-2. `/opt/homebrew/bin/crew`, then `/usr/local/bin/crew`.
-3. Installed Node-version bins under `$NVM_DIR/versions/node` (or `~/.nvm/versions/node`), newest version first.
+Auto-discovery does **not** cover fnm or asdf. On those setups — or any time `crew` needs environment your shell provides — set this preference to an absolute path (a [wrapper script](#the-universal-fix-a-wrapper-the-preference-points-at) is the most reliable choice; see Troubleshooting).
 
-The extension invokes that executable directly with an argument array. It does not use a shell, read Groundcrew config
-files, or handle provider credentials.
+**Editor Application** (optional) — the app used for "Open in Editor" on a task worktree (e.g. Visual Studio Code, Cursor). Leave it blank to use the macOS "Open With" picker.
 
-## Environment / Troubleshooting
+## Troubleshooting
 
-Raycast spawns `crew` with a stripped environment: `PATH` is the bare
-`/usr/bin:/bin:/usr/sbin:/sbin` and no shell-exported variables are present. On
-node-version-manager (fnm, nvm, asdf) setups this produces three common failures:
+Raycast launches command-line tools with a **minimal environment**: a bare `PATH`
+(`/usr/bin:/bin:/usr/sbin:/sbin`) and **none** of your shell's exported variables. Your terminal
+loads `~/.zshrc` / `~/.zprofile` (and files like `~/.secrets`); Raycast does not. So anything `crew`
+relies on from your shell — the `node` that runs it, its provider API key, or the `git` / `gh` /
+`cmux` / `tmux` it shells out to — can be missing when a command runs from Raycast.
 
-| Symptom | Root cause |
-|---|---|
-| `env: node: No such file or directory` | `crew` is a Node script (`#!/usr/bin/env node`); Raycast's `PATH` has no `node`. Homebrew installs to `/opt/homebrew/bin` (usually visible); nvm/fnm installs are not. |
-| Browse fails with "Linear API key not set"; Status works | `crew task list` needs `GROUNDCREW_LINEAR_API_KEY` (or `LINEAR_API_KEY`), which is typically shell-exported from `~/.secrets` or `.zshrc`. Status reads local files only, masking the gap. |
-| Cleanup fails with `Lifecycle: Idle · Session: Unknown` | `crew`'s workspace probe requires `cmux`/`tmux` (and `gh`/`git`) on `PATH`; Raycast strips them, so cleanup can't reconcile session state. |
+Homebrew installs usually work out of the box, because `/opt/homebrew/bin` is already on Raycast's
+`PATH`. Node-version-manager installs (nvm, fnm, asdf) and shell-exported credentials are the common
+failure cases below. The **Groundcrew Doctor** command surfaces exactly which of these is wrong.
 
-**Which commands need which environment:**
+### `env: node: No such file or directory` (PATH)
 
-- **Groundcrew Status** — reads local snapshot files only; works without credentials or session tools.
-- **Browse Groundcrew Tasks / Start Groundcrew Task / lifecycle actions** — require the provider API key and session backend (`cmux`/`tmux`, `gh`, `git`) on `PATH`.
+**Cause:** `crew` is a Node script (`#!/usr/bin/env node`). Your `node` lives in a version-manager
+directory (e.g. `~/.local/share/fnm/.../bin`) that isn't on Raycast's `PATH`, so the shebang can't
+find it.
 
-**Accepted API key variable names:** `GROUNDCREW_LINEAR_API_KEY` (preferred) or `LINEAR_API_KEY`.
+**Fix:** use the wrapper below, which calls `node` by absolute path and puts your tool directories
+on `PATH`.
 
-### Fix: point the Executable Path preference at a shim
+### "Linear API key not set" — Browse fails but Status works (API key)
 
-Create a wrapper script that sources your secrets and extends `PATH`, then point the
-**Groundcrew Executable Path** preference at it (or place it at `/opt/homebrew/bin/crew` for
-auto-discovery).
+**Cause:** `crew task list` (Browse, Start, and lifecycle actions) needs the provider key
+`GROUNDCREW_LINEAR_API_KEY` (or `LINEAR_API_KEY`). That key is exported from your shell profile,
+which Raycast doesn't load. `crew status` (Status) only reads local files, so it keeps working —
+which is why Status succeeds while Browse fails.
+
+**Fix:** make the key available to `crew` when Raycast spawns it. The wrapper below sources the same
+file your shell does (`~/.secrets`); adjust the path if your key lives in `~/.zshrc` or elsewhere.
+
+### Cleanup fails with `Session: Unknown` / can't reconcile (session backend)
+
+**Cause:** `crew`'s workspace probe needs its session backend (`cmux` or `tmux`) and `git` / `gh` on
+`PATH`. Raycast strips them, so cleanup can't determine or tear down session state.
+
+**Fix:** the wrapper below adds `/opt/homebrew/bin` (where these live) to `PATH`.
+
+### The universal fix: a wrapper the preference points at
+
+Create a small wrapper that restores the environment `crew` needs, then point the **Groundcrew
+Executable Path** preference at its absolute path (or place it at `/opt/homebrew/bin/crew` so
+auto-discovery finds it):
 
 ```sh
 #!/bin/sh
-[ -f "$HOME/.secrets" ] && . "$HOME/.secrets"
+# ~/.local/bin/crew-raycast   (remember: chmod +x ~/.local/bin/crew-raycast)
+
+# 1) Provider API keys — source the same file your shell does.
+[ -f "$HOME/.secrets" ] && . "$HOME/.secrets"        # e.g. exports GROUNDCREW_LINEAR_API_KEY
+
+# 2) Tools crew needs on PATH: node, git, gh, cmux/tmux.
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-exec "/absolute/path/to/node" "/absolute/path/to/@clipboard-health/groundcrew/bin/run.js" "$@"
+
+# 3) Run crew via an absolute node path so the shebang never has to find it.
+exec "$(command -v node)" "$(npm root -g)/@clipboard-health/groundcrew/bin/run.js" "$@"
 ```
 
-Replace the two `exec` paths with the output of `which node` and `npm root -g`/`crew --version`
-locate the installed script. Mark the shim executable (`chmod +x <shim>`).
+Verify it works from a bare environment (mimicking Raycast) before setting the preference:
 
-> **Note:** Homebrew installs (`brew install clipboard-health/tap/groundcrew`) usually work
-> out of the box because `/opt/homebrew/bin` is on Raycast's default `PATH`. Node-version-manager
-> installs will not; the shim above is the recommended fix.
+```sh
+chmod +x ~/.local/bin/crew-raycast
+env -i HOME="$HOME" PATH="/usr/bin:/bin" ~/.local/bin/crew-raycast --version   # prints the version
+```
 
-**Maintainer note — cleaner long-term alternatives:**
-
-- Import the login-shell environment at extension startup using [`shell-env`](https://github.com/sindresorhus/shell-env) or [`fix-path`](https://github.com/sindresorhus/fix-path).
-- Spawn `crew` via Raycast's bundled `process.execPath` (Node) to sidestep the `env node` shebang entirely.
+Then set **Groundcrew Executable Path** to `~/.local/bin/crew-raycast` (use the full absolute path).
 
 ## Development
 
 ```sh
 npm install
-npm run dev
+npm run dev     # ray develop
+npm run build   # produce and validate a distribution build
+npm test        # vitest
 ```
-
-Run `npm run build` to produce and validate a distribution build.
 
 ## Project Structure
 
 - `src/cli` — Groundcrew CLI client and process boundary
 - `src/types` — shared domain types
 - `src/components` — reusable Raycast UI components
-- `src/__tests__` — focused tests for shared and command behavior
+- `src/__tests__` — tests for shared and command behavior
