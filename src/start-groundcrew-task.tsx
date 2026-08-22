@@ -44,6 +44,7 @@ export default function Command(props: LaunchProps<{ arguments: Arguments }>) {
       stopTask: async (id, options) => (await getClient()).stopTask(id, options),
       resumeTask: async (id, options) => (await getClient()).resumeTask(id, options),
       cleanupTask: async (id, options) => (await getClient()).cleanupTask(id, options),
+      completeTask: async (id, options) => (await getClient()).completeTask(id, options),
     }),
     [getClient],
   );

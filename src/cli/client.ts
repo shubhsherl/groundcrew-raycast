@@ -29,17 +29,40 @@ export interface StopTaskOptions extends LifecycleOptions {
   reason?: string;
 }
 
+export interface ResumeTaskOptions extends LifecycleOptions {
+  /** Start a fresh agent chat session instead of resuming the existing one. */
+  newSession?: boolean;
+}
+
+export interface CleanupTaskOptions extends LifecycleOptions {
+  /** Also remove a worktree with uncommitted changes. Off by default; the CLI otherwise refuses a dirty worktree. */
+  force?: boolean;
+}
+
+export interface CleanupAllOptions extends LifecycleOptions {
+  /** Also remove worktrees with uncommitted changes. Off by default; the CLI otherwise skips dirty worktrees. */
+  force?: boolean;
+}
+
+export interface OpenWorkspaceOptions extends LifecycleOptions {
+  /** Treat the target as a branch name (`crew open --branch <name>`) rather than a PR. */
+  kind?: "pr" | "branch";
+}
+
 export interface GroundcrewClient {
   readonly executablePath: string;
-  readonly version: string;
   listTasks(): Promise<GroundcrewTask[]>;
   getTask(taskId: string): Promise<GroundcrewTask>;
   /** Always loads `crew status --json`; natural-task filtering happens after the full inventory is parsed. */
   getStatus(naturalTaskId?: string): Promise<GroundcrewStatusInventory>;
   startTask(taskId: string, options?: LifecycleOptions): Promise<GroundcrewLifecycleResult>;
   stopTask(taskId: string, options?: StopTaskOptions): Promise<GroundcrewLifecycleResult>;
-  resumeTask(taskId: string, options?: LifecycleOptions): Promise<GroundcrewLifecycleResult>;
-  cleanupTask(taskId: string, options?: LifecycleOptions): Promise<GroundcrewLifecycleResult>;
+  resumeTask(taskId: string, options?: ResumeTaskOptions): Promise<GroundcrewLifecycleResult>;
+  cleanupTask(taskId: string, options?: CleanupTaskOptions): Promise<GroundcrewLifecycleResult>;
+  cleanupAllTasks(options?: CleanupAllOptions): Promise<GroundcrewLifecycleResult>;
+  completeTask(taskId: string, options?: LifecycleOptions): Promise<GroundcrewLifecycleResult>;
+  openWorkspace(target: string, options?: OpenWorkspaceOptions): Promise<GroundcrewLifecycleResult>;
+  runDoctor(options?: LifecycleOptions): Promise<GroundcrewLifecycleResult>;
 }
 
 function diagnostics(result: ProcessResult) {
@@ -89,17 +112,39 @@ function commandFailure(argv: readonly string[], result: ProcessResult): Groundc
 
 class InstalledGroundcrewClient implements GroundcrewClient {
   public readonly executablePath: string;
-  public readonly version: string;
   readonly #environment: NodeJS.ProcessEnv;
+  readonly #versionTimeoutMs: number;
+  // Validated lazily on the first command and memoized, so `crew --version` runs
+  // concurrently with the first data call rather than serially before it.
+  #versionValidation?: Promise<string>;
 
-  public constructor(executablePath: string, version: string, environment: NodeJS.ProcessEnv) {
+  public constructor(
+    executablePath: string,
+    environment: NodeJS.ProcessEnv,
+    versionTimeoutMs: number,
+  ) {
     this.executablePath = executablePath;
-    this.version = version;
     this.#environment = environment;
+    this.#versionTimeoutMs = versionTimeoutMs;
+  }
+
+  #ensureCompatibleVersion(): Promise<string> {
+    this.#versionValidation ??= validateGroundcrewVersion(
+      this.executablePath,
+      this.#environment,
+      this.#versionTimeoutMs,
+    );
+    return this.#versionValidation;
   }
 
   async #runJson(argv: readonly string[]): Promise<string> {
-    const result = await runProcess(this.executablePath, argv, { environment: this.#environment });
+    // Start the version check and the data call concurrently, but await the version
+    // first so an incompatible-CLI error always takes precedence over the data result.
+    const versionCheck = this.#ensureCompatibleVersion();
+    const process = runProcess(this.executablePath, argv, { environment: this.#environment });
+    process.catch(() => undefined);
+    await versionCheck;
+    const result = await process;
     if (result.kind !== "success") {
       throw commandFailure(argv, result);
     }
@@ -110,11 +155,15 @@ class InstalledGroundcrewClient implements GroundcrewClient {
     argv: readonly string[],
     options: LifecycleOptions = {},
   ): Promise<GroundcrewLifecycleResult> {
-    return await runProcess(this.executablePath, argv, {
+    const versionCheck = this.#ensureCompatibleVersion();
+    const process = runProcess(this.executablePath, argv, {
       environment: this.#environment,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     });
+    process.catch(() => undefined);
+    await versionCheck;
+    return await process;
   }
 
   public async listTasks(): Promise<GroundcrewTask[]> {
@@ -161,17 +210,76 @@ class InstalledGroundcrewClient implements GroundcrewClient {
 
   public async resumeTask(
     taskId: string,
-    options: LifecycleOptions = {},
+    options: ResumeTaskOptions = {},
   ): Promise<GroundcrewLifecycleResult> {
-    return await this.#runLifecycle(["resume", taskId], options);
+    const { newSession, ...lifecycleOptions } = options;
+    return await this.#runLifecycle(
+      ["resume", ...(newSession === true ? ["--new"] : []), taskId],
+      lifecycleOptions,
+    );
   }
 
   public async cleanupTask(
     taskId: string,
+    options: CleanupTaskOptions = {},
+  ): Promise<GroundcrewLifecycleResult> {
+    const { force, ...lifecycleOptions } = options;
+    return await this.#runLifecycle(
+      ["cleanup", ...(force === true ? ["--force"] : []), taskId],
+      lifecycleOptions,
+    );
+  }
+
+  public async cleanupAllTasks(
+    options: CleanupAllOptions = {},
+  ): Promise<GroundcrewLifecycleResult> {
+    const { force, ...lifecycleOptions } = options;
+    return await this.#runLifecycle(
+      ["cleanup", "--all", ...(force === true ? ["--force"] : [])],
+      lifecycleOptions,
+    );
+  }
+
+  public async completeTask(
+    taskId: string,
     options: LifecycleOptions = {},
   ): Promise<GroundcrewLifecycleResult> {
-    return await this.#runLifecycle(["cleanup", taskId], options);
+    return await this.#runLifecycle(["task", "done", taskId], options);
   }
+
+  public async openWorkspace(
+    target: string,
+    options: OpenWorkspaceOptions = {},
+  ): Promise<GroundcrewLifecycleResult> {
+    const { kind, ...lifecycleOptions } = options;
+    const argv = kind === "branch" ? ["open", "--branch", target] : ["open", target];
+    return await this.#runLifecycle(argv, lifecycleOptions);
+  }
+
+  public async runDoctor(options: LifecycleOptions = {}): Promise<GroundcrewLifecycleResult> {
+    // Intentionally NOT version-gated: `doctor` is the tool you reach for when the
+    // CLI is misconfigured or incompatible, so it must run regardless.
+    return await runProcess(this.executablePath, ["doctor"], {
+      environment: this.#environment,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+    });
+  }
+}
+
+async function validateGroundcrewVersion(
+  executablePath: string,
+  environment: NodeJS.ProcessEnv,
+  versionTimeoutMs: number,
+): Promise<string> {
+  const versionResult = await runProcess(executablePath, ["--version"], {
+    environment,
+    timeoutMs: versionTimeoutMs,
+  });
+  if (versionResult.kind !== "success") {
+    throw commandFailure(["--version"], versionResult);
+  }
+  return assertCompatibleVersion(versionResult.stdout, MINIMUM_GROUNDCREW_VERSION);
 }
 
 export async function createGroundcrewClient(
@@ -182,13 +290,11 @@ export async function createGroundcrewClient(
     configuredPath: options.executablePath,
     environment,
   });
-  const versionResult = await runProcess(executablePath, ["--version"], {
+  // Compatibility is validated lazily on the first command (see `#ensureCompatibleVersion`)
+  // so `crew --version` overlaps the first data call instead of blocking it.
+  return new InstalledGroundcrewClient(
+    executablePath,
     environment,
-    timeoutMs: options.versionTimeoutMs ?? DEFAULT_VERSION_TIMEOUT_MS,
-  });
-  if (versionResult.kind !== "success") {
-    throw commandFailure(["--version"], versionResult);
-  }
-  const version = assertCompatibleVersion(versionResult.stdout, MINIMUM_GROUNDCREW_VERSION);
-  return new InstalledGroundcrewClient(executablePath, version, environment);
+    options.versionTimeoutMs ?? DEFAULT_VERSION_TIMEOUT_MS,
+  );
 }

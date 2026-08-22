@@ -22,11 +22,11 @@ import type {
   GroundcrewTask,
 } from "../types/groundcrew";
 
-export type LifecycleAction = "start" | "stop" | "resume" | "cleanup";
+export type LifecycleAction = "start" | "stop" | "resume" | "cleanup" | "done";
 
 export type LifecycleMutations = Pick<
   GroundcrewClient,
-  "startTask" | "stopTask" | "resumeTask" | "cleanupTask"
+  "startTask" | "stopTask" | "resumeTask" | "cleanupTask" | "completeTask"
 >;
 
 export interface LifecycleReconciliation {
@@ -41,8 +41,8 @@ export interface LifecycleActionController {
   run: (
     action: LifecycleAction,
     taskId: string,
-    options?: { reason?: string; targetTaskId?: string },
-  ) => Promise<void>;
+    options?: { reason?: string; targetTaskId?: string; force?: boolean; newSession?: boolean },
+  ) => Promise<GroundcrewLifecycleResult["kind"] | "busy">;
 }
 
 export type LifecycleTaskSelection =
@@ -53,6 +53,7 @@ export type LifecycleTaskSelection =
 
 export interface LifecycleAvailability {
   cleanup: boolean;
+  done: boolean;
   resume: boolean;
   start: boolean;
   stop: boolean;
@@ -85,6 +86,12 @@ const ACTION_PRESENTATION: Record<
     success: "Task Cleaned Up",
     canceled: "Cleanup Canceled",
     failure: "Couldn’t Clean Up Task",
+  },
+  done: {
+    progress: "Marking Task Done",
+    success: "Task Marked Done",
+    canceled: "Marking Done Canceled",
+    failure: "Couldn’t Mark Task Done",
   },
 };
 
@@ -166,9 +173,10 @@ export function getLifecycleAvailability(
         ? task === undefined || canonicalStartEligible
         : status === undefined && canonicalStartEligible,
     stop: local?.session === "live",
-    resume:
-      hasPreservedWorktree && (local?.lifecycle === "interrupted" || local?.session === "exited"),
+    // Any preserved (non-live) worktree can be reopened: idle, interrupted, or exited.
+    resume: hasPreservedWorktree && local !== undefined && local.session !== "live",
     cleanup: local !== undefined && local.session !== "live",
+    done: task !== undefined && task.status !== "done",
   };
 }
 
@@ -209,16 +217,37 @@ function reconciliationMessage(reconciliation: LifecycleReconciliation): string 
     : details.join(" · ");
 }
 
+export function lifecycleErrorDetail(result: GroundcrewLifecycleResult): string | undefined {
+  if (result.kind === "launch-failure") {
+    const message = result.error.message.trim();
+    return message.length > 0 ? message : undefined;
+  }
+  for (const stream of [result.stderr, result.stdout]) {
+    const lines = stream
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (lines.length > 0) {
+      return lines.slice(-3).join(" · ");
+    }
+  }
+  return undefined;
+}
+
 async function invokeMutation({
   action,
   controller,
+  force,
   mutations,
+  newSession,
   reason,
   taskId,
 }: {
   action: LifecycleAction;
   controller: AbortController;
+  force?: boolean;
   mutations: LifecycleMutations;
+  newSession?: boolean;
   reason?: string;
   taskId: string;
 }): Promise<GroundcrewLifecycleResult> {
@@ -231,9 +260,17 @@ async function invokeMutation({
         ...(reason === undefined ? {} : { reason }),
       });
     case "resume":
-      return await mutations.resumeTask(taskId, { signal: controller.signal });
+      return await mutations.resumeTask(taskId, {
+        signal: controller.signal,
+        ...(newSession === true ? { newSession: true } : {}),
+      });
     case "cleanup":
-      return await mutations.cleanupTask(taskId, { signal: controller.signal });
+      return await mutations.cleanupTask(taskId, {
+        signal: controller.signal,
+        ...(force === true ? { force: true } : {}),
+      });
+    case "done":
+      return await mutations.completeTask(taskId, { signal: controller.signal });
   }
 }
 
@@ -262,10 +299,10 @@ export function useLifecycleActionController({
     async (
       action: LifecycleAction,
       taskId: string,
-      options?: { reason?: string; targetTaskId?: string },
+      options?: { reason?: string; targetTaskId?: string; force?: boolean; newSession?: boolean },
     ) => {
       if (active.current.has(taskId)) {
-        return;
+        return "busy";
       }
       const controller = new AbortController();
       active.current.set(taskId, controller);
@@ -283,6 +320,8 @@ export function useLifecycleActionController({
           action,
           controller,
           mutations,
+          force: options?.force,
+          newSession: options?.newSession,
           reason: options?.reason,
           taskId: options?.targetTaskId ?? taskId,
         });
@@ -320,12 +359,17 @@ export function useLifecycleActionController({
           toast.title = presentation.failure;
           break;
       }
-      toast.message = reconciliationMessage(reconciliation);
+      toast.message =
+        result.kind === "success" || result.kind === "canceled"
+          ? reconciliationMessage(reconciliation)
+          : (lifecycleErrorDetail(result) ?? reconciliationMessage(reconciliation));
 
       if (active.current.get(taskId) === controller) {
         active.current.delete(taskId);
         render((current) => current + 1);
       }
+
+      return result.kind;
     },
     [mutations, reconcile],
   );
@@ -406,47 +450,132 @@ export function LifecycleActions({
       ) : null}
       {availability.stop ? (
         disabled ? (
-          <Action title="Stop Task" icon={Icon.Stop} />
+          <Action title="Stop & Clean up Task" icon={Icon.Stop} />
         ) : (
-          <Action.Push
-            title="Stop Task"
-            icon={Icon.Stop}
-            target={
-              <StopTaskForm controller={controller} taskId={taskId} targetTaskId={localTaskId} />
-            }
-          />
+          <>
+            <Action
+              title="Stop & Clean up Task"
+              icon={Icon.Stop}
+              style={Action.Style.Destructive}
+              onAction={async () => {
+                const confirmed = await confirmAlert({
+                  title: `Stop and clean up ${taskId}?`,
+                  message:
+                    "This stops the running session and removes the preserved Groundcrew workspace for this task.",
+                  primaryAction: {
+                    title: "Stop & Clean up Task",
+                    style: Alert.ActionStyle.Destructive,
+                  },
+                });
+                if (!confirmed) {
+                  return;
+                }
+                const stopResult = await controller.run("stop", taskId, {
+                  targetTaskId: localTaskId,
+                });
+                if (stopResult === "success") {
+                  await controller.run("cleanup", taskId, { targetTaskId: localTaskId });
+                }
+              }}
+            />
+            <Action
+              title="Stop Task"
+              icon={Icon.Stop}
+              onAction={() => controller.run("stop", taskId, { targetTaskId: localTaskId })}
+            />
+            <Action.Push
+              title="Stop with Reason"
+              icon={Icon.Pencil}
+              target={
+                <StopTaskForm controller={controller} taskId={taskId} targetTaskId={localTaskId} />
+              }
+            />
+          </>
         )
       ) : null}
       {availability.resume ? (
-        <Action
-          title="Resume Task"
-          icon={Icon.ArrowClockwise}
-          {...(disabled
-            ? {}
-            : {
-                onAction: () => controller.run("resume", taskId, { targetTaskId: localTaskId }),
-              })}
-        />
+        disabled ? (
+          <Action title="Resume Task" icon={Icon.ArrowClockwise} />
+        ) : (
+          <>
+            <Action
+              title="Resume Task"
+              icon={Icon.ArrowClockwise}
+              onAction={() => controller.run("resume", taskId, { targetTaskId: localTaskId })}
+            />
+            <Action
+              title="Resume with New Session"
+              icon={Icon.ArrowClockwise}
+              onAction={() =>
+                controller.run("resume", taskId, { targetTaskId: localTaskId, newSession: true })
+              }
+            />
+          </>
+        )
       ) : null}
       {availability.cleanup ? (
+        disabled ? (
+          <Action title="Cleanup Task" icon={Icon.Trash} />
+        ) : (
+          <>
+            <Action
+              title="Cleanup Task"
+              icon={Icon.Trash}
+              style={Action.Style.Destructive}
+              onAction={async () => {
+                const confirmed = await confirmAlert({
+                  title: `Cleanup ${taskId}?`,
+                  message: "This removes the preserved Groundcrew workspace for this task.",
+                  primaryAction: {
+                    title: "Cleanup Task",
+                    style: Alert.ActionStyle.Destructive,
+                  },
+                });
+                if (confirmed) {
+                  await controller.run("cleanup", taskId, { targetTaskId: localTaskId });
+                }
+              }}
+            />
+            <Action
+              title="Cleanup Task (Force)"
+              icon={Icon.Trash}
+              style={Action.Style.Destructive}
+              onAction={async () => {
+                const confirmed = await confirmAlert({
+                  title: `Force cleanup ${taskId}?`,
+                  message:
+                    "This removes the preserved Groundcrew workspace, discarding any uncommitted changes in its worktree. Discarded changes cannot be recovered.",
+                  primaryAction: {
+                    title: "Force Cleanup Task",
+                    style: Alert.ActionStyle.Destructive,
+                  },
+                });
+                if (confirmed) {
+                  await controller.run("cleanup", taskId, {
+                    targetTaskId: localTaskId,
+                    force: true,
+                  });
+                }
+              }}
+            />
+          </>
+        )
+      ) : null}
+      {availability.done ? (
         <Action
-          title="Cleanup Task"
-          icon={Icon.Trash}
-          style={Action.Style.Destructive}
+          title="Mark Task Done"
+          icon={Icon.CheckCircle}
           {...(disabled
             ? {}
             : {
                 onAction: async () => {
                   const confirmed = await confirmAlert({
-                    title: `Cleanup ${taskId}?`,
-                    message: "This removes the preserved Groundcrew workspace for this task.",
-                    primaryAction: {
-                      title: "Cleanup Task",
-                      style: Alert.ActionStyle.Destructive,
-                    },
+                    title: `Mark ${taskId} done?`,
+                    message: "This completes the task in its source (e.g. Linear).",
+                    primaryAction: { title: "Mark Task Done" },
                   });
                   if (confirmed) {
-                    await controller.run("cleanup", taskId, { targetTaskId: localTaskId });
+                    await controller.run("done", taskId, { targetTaskId: startTaskId });
                   }
                 },
               })}

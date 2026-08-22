@@ -1,6 +1,7 @@
 import {
   Action,
   ActionPanel,
+  Cache,
   Color,
   Detail,
   Icon,
@@ -19,6 +20,7 @@ import type {
   GroundcrewTask,
   GroundcrewTaskBlocker,
 } from "../types/groundcrew";
+import { GroundcrewDoctor } from "./doctor";
 import {
   findCanonicalTask,
   findLifecycleTask,
@@ -27,6 +29,8 @@ import {
   type LifecycleMutations,
   useLifecycleActionController,
 } from "./lifecycle-actions";
+
+const GROUNDCREW_INSTALL_URL = "https://www.npmjs.com/package/@clipboard-health/groundcrew";
 
 type TaskFilter = "all" | "ready" | "blocked" | GroundcrewCanonicalStatus;
 type TaskGroup = "ready" | "in-progress" | "in-review" | "blocked" | "done" | "other";
@@ -83,10 +87,37 @@ const GROUPS: readonly {
   { key: "other", title: "Other" },
 ];
 
-function useAsyncValue<T>(loader: () => Promise<T>, initialValue?: T) {
+const cache = new Cache();
+
+function readCache<T>(key: string): T | undefined {
+  try {
+    const raw = cache.get(key);
+    return raw === undefined ? undefined : (JSON.parse(raw) as T);
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCache<T>(key: string, value: T): void {
+  try {
+    cache.set(key, JSON.stringify(value));
+  } catch {
+    // Cache write failures only cost first-paint speed; ignore them.
+  }
+}
+
+interface UseAsyncValueOptions<T> {
+  cacheKey?: string;
+  initialValue?: T;
+}
+
+/** Loads a value, with optional stale-while-revalidate caching for instant first paint. */
+function useAsyncValue<T>(loader: () => Promise<T>, options: UseAsyncValueOptions<T> = {}) {
+  const { cacheKey, initialValue } = options;
+  const seed = (cacheKey === undefined ? undefined : readCache<T>(cacheKey)) ?? initialValue;
   const [state, setState] = useState<AsyncState<T>>({
     isLoading: true,
-    ...(initialValue === undefined ? {} : { value: initialValue }),
+    ...(seed === undefined ? {} : { value: seed }),
   });
   const mounted = useRef(false);
   const requestId = useRef(0);
@@ -98,6 +129,9 @@ function useAsyncValue<T>(loader: () => Promise<T>, initialValue?: T) {
       const value = await loader();
       if (mounted.current && currentRequest === requestId.current) {
         setState({ isLoading: false, value });
+        if (cacheKey !== undefined) {
+          writeCache(cacheKey, value);
+        }
         return { kind: "success", value };
       }
       return { kind: "stale" };
@@ -108,7 +142,7 @@ function useAsyncValue<T>(loader: () => Promise<T>, initialValue?: T) {
       }
       return { kind: "stale" };
     }
-  }, [loader]);
+  }, [loader, cacheKey]);
 
   useEffect(() => {
     mounted.current = true;
@@ -231,11 +265,19 @@ function EmptyStateActions({
     <ActionPanel>
       <RefreshAction title="Refresh Tasks" onRefresh={onRefresh} />
       {showPreferences ? (
-        <Action
-          title="Open Extension Preferences"
-          icon={Icon.Gear}
-          onAction={openExtensionPreferences}
-        />
+        <>
+          <Action.Push title="Run Doctor" icon={Icon.Stethoscope} target={<GroundcrewDoctor />} />
+          <Action
+            title="Open Extension Preferences"
+            icon={Icon.Gear}
+            onAction={openExtensionPreferences}
+          />
+          <Action.OpenInBrowser
+            title="Install Groundcrew CLI"
+            icon={Icon.Download}
+            url={GROUNDCREW_INSTALL_URL}
+          />
+        </>
       ) : null}
     </ActionPanel>
   );
@@ -394,7 +436,12 @@ function taskMarkdown(task: GroundcrewTask): string {
 
 export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
   const loader = useCallback(() => loadTask(summary.id), [loadTask, summary.id]);
-  const { error, isLoading, reload, value: task = summary } = useAsyncValue(loader, summary);
+  const {
+    error,
+    isLoading,
+    reload,
+    value: task = summary,
+  } = useAsyncValue(loader, { initialValue: summary });
   const presentation = error === undefined ? undefined : errorPresentation(error, "detail");
   const url = taskUrl(task);
   const refresh = useCallback(async () => {
@@ -465,8 +512,12 @@ export function TaskDetail({ task: summary, loadTask }: TaskDetailProps) {
 
 export function TaskBrowser({ loadTasks, loadTask, loadStatus, mutations }: TaskBrowserProps) {
   const [filter, setFilter] = useState<TaskFilter>("all");
-  const { error, isLoading, reload, value: tasks } = useAsyncValue(loadTasks);
-  const { reload: reloadStatus, value: status } = useAsyncValue(loadStatus);
+  const { error, isLoading, reload, value: tasks } = useAsyncValue(loadTasks, {
+    cacheKey: "groundcrew.browse.tasks",
+  });
+  const { reload: reloadStatus, value: status } = useAsyncValue(loadStatus, {
+    cacheKey: "groundcrew.browse.status",
+  });
   const reconcile = useCallback(
     async (taskId: string) => {
       const [taskResult, statusResult] = await Promise.all([reload(), reloadStatus()]);

@@ -1,5 +1,5 @@
 import { createElement, type ReactElement, type ReactNode } from "react";
-import { showToast } from "@raycast/api";
+import { confirmAlert, showToast } from "@raycast/api";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
@@ -34,8 +34,10 @@ vi.mock("@raycast/api", () => {
     }),
   });
   const Action = Object.assign(mockComponent("raycast-action"), {
+    CopyToClipboard: mockComponent("raycast-action-copy-to-clipboard"),
     Open: mockComponent("raycast-action-open"),
     OpenInBrowser: mockComponent("raycast-action-open-in-browser"),
+    OpenWith: mockComponent("raycast-action-open-with"),
     Push: mockComponent("raycast-action-push"),
     Style: { Destructive: "destructive" },
     SubmitForm: mockComponent("raycast-action-submit-form"),
@@ -48,6 +50,12 @@ vi.mock("@raycast/api", () => {
     Action,
     ActionPanel: mockComponent("raycast-action-panel"),
     Alert: { ActionStyle: { Destructive: "destructive" } },
+    Cache: class {
+      get() {
+        return undefined;
+      }
+      set() {}
+    },
     Color: {
       Blue: "blue",
       Green: "green",
@@ -60,9 +68,18 @@ vi.mock("@raycast/api", () => {
     Detail,
     Form,
     Icon: new Proxy({}, { get: (_target, property) => String(property) }),
-    Keyboard: { Shortcut: { Common: { Refresh: { modifiers: ["cmd"], key: "r" } } } },
+    Keyboard: {
+      Shortcut: {
+        Common: {
+          Refresh: { modifiers: ["cmd"], key: "r" },
+          RemoveAll: { modifiers: ["ctrl", "shift"], key: "x" },
+        },
+      },
+    },
     List,
     openExtensionPreferences: vi.fn(),
+    getPreferenceValues: () => ({}),
+    closeMainWindow: vi.fn(),
     confirmAlert: vi.fn(),
     showToast: vi.fn(),
     Toast: { Style: { Animated: "animated", Failure: "failure", Success: "success" } },
@@ -264,6 +281,7 @@ function lifecycleMutations(overrides: Partial<LifecycleMutations> = {}): Lifecy
     stopTask: success,
     resumeTask: success,
     cleanupTask: success,
+    completeTask: success,
     ...overrides,
   };
 }
@@ -313,9 +331,11 @@ describe("StatusDashboard", () => {
     );
     expect(
       active
-        ?.findAll((node) => (node.type as string) === "raycast-action-push")
+        ?.findAll((node) =>
+          ["raycast-action", "raycast-action-push"].includes(node.type as string),
+        )
         .map((action) => action.props.title),
-    ).toContain("Stop Task");
+    ).toContain("Stop & Clean up Task");
     const preserved = findByType(renderer, "raycast-list-item").find(
       (item) => item.props.id === "local:tem-3901",
     );
@@ -441,9 +461,11 @@ describe("StatusDashboard", () => {
     );
     expect(
       activeTask
-        ?.findAll((node) => (node.type as string) === "raycast-action-push")
+        ?.findAll((node) =>
+          ["raycast-action", "raycast-action-push"].includes(node.type as string),
+        )
         .map((action) => action.props.title),
-    ).toEqual(expect.arrayContaining(["Stop Task", "Show Task Details"]));
+    ).toEqual(expect.arrayContaining(["Stop & Clean up Task", "Show Task Details"]));
     expect(
       activeTask
         ?.findAll((node) => (node.type as string) === "raycast-action-open-in-browser")
@@ -453,7 +475,9 @@ describe("StatusDashboard", () => {
       "https://github.com/ClipboardHealth/groundcrew-raycast/pull/4",
     ]);
     expect(
-      activeTask?.findAll((node) => (node.type as string) === "raycast-action-open")[0]?.props,
+      activeTask
+        ?.findAll((node) => (node.type as string) === "raycast-action-open")
+        .find((action) => action.props.application === "Finder")?.props,
     ).toMatchObject({
       target: "/work/groundcrew-raycast-tem-3896",
       application: "Finder",
@@ -496,6 +520,90 @@ describe("StatusDashboard", () => {
     });
   });
 
+  it("uses a state-aware primary action: cmux for live, resume for preserved", async () => {
+    const loadStatus = vi.fn(async () => inventory);
+    const renderer = await render(
+      <StatusDashboard {...defaultLifecycleProps} loadStatus={loadStatus} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const firstActionTitle = (id: string) => {
+      const item = findByType(renderer, "raycast-list-item").find((i) => i.props.id === id);
+      return item
+        ?.findAll((node) =>
+          ["raycast-action", "raycast-action-push"].includes(node.type as string),
+        )[0]
+        ?.props.title;
+    };
+
+    // Live/active task leads with Open in Cmux; interrupted (preserved) leads with Resume.
+    expect(firstActionTitle("local:linear:tem-3896")).toBe("Open in Cmux");
+    expect(firstActionTitle("local:tem-3901")).toBe("Resume Task");
+  });
+
+  it("offers bulk idle cleanup (normal and force) on preserved rows but not active ones", async () => {
+    vi.mocked(confirmAlert).mockResolvedValue(true);
+    vi.mocked(showToast).mockResolvedValue({
+      style: "",
+      title: "",
+      message: undefined,
+    } as never);
+    const cleanupAllTasks = vi.fn(async () => ({
+      kind: "success" as const,
+      exitCode: 0 as const,
+      stdout: "✓ Cleanup complete for tem-3901 (host)",
+      stderr: "",
+    }));
+    const loadStatus = vi.fn(async () => inventory);
+    const renderer = await render(
+      <StatusDashboard
+        {...defaultLifecycleProps}
+        loadStatus={loadStatus}
+        cleanupAllTasks={cleanupAllTasks}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const actionTitles = (id: string) =>
+      findByType(renderer, "raycast-list-item")
+        .find((item) => item.props.id === id)
+        ?.findAll((node) => (node.type as string) === "raycast-action")
+        .map((action) => action.props.title) ?? [];
+
+    expect(actionTitles("local:tem-3901")).toEqual(
+      expect.arrayContaining([
+        "Clean up All Idle Workspaces",
+        "Clean up All Idle Workspaces (Force)",
+      ]),
+    );
+    expect(actionTitles("local:linear:tem-3896")).not.toContain("Clean up All Idle Workspaces");
+
+    const preservedActions = findByType(renderer, "raycast-list-item")
+      .find((item) => item.props.id === "local:tem-3901")
+      ?.findAll((node) => (node.type as string) === "raycast-action");
+    const normal = preservedActions?.find(
+      (action) => action.props.title === "Clean up All Idle Workspaces",
+    );
+    const force = preservedActions?.find(
+      (action) => action.props.title === "Clean up All Idle Workspaces (Force)",
+    );
+
+    await act(async () => {
+      await normal?.props.onAction();
+    });
+    expect(cleanupAllTasks).toHaveBeenLastCalledWith(undefined);
+
+    await act(async () => {
+      await force?.props.onAction();
+    });
+    expect(cleanupAllTasks).toHaveBeenLastCalledWith({ force: true });
+    expect(confirmAlert).toHaveBeenCalledTimes(2);
+  });
+
   it("filters task detail from the joined inventory and exposes only supplied native resources", async () => {
     const renderer = await render(
       <StatusTaskDetail inventory={inventory} naturalTaskId="TEM-3896" />,
@@ -529,8 +637,12 @@ describe("StatusDashboard", () => {
       "https://linear.app/clipboardhealth/issue/TEM-3896",
       "https://github.com/ClipboardHealth/groundcrew-raycast/pull/4",
     ]);
-    expect(findByType(renderer, "raycast-action-open")[0]?.props).toMatchObject({
-      title: "Open Worktree",
+    expect(
+      findByType(renderer, "raycast-action-open").find(
+        (action) => action.props.application === "Finder",
+      )?.props,
+    ).toMatchObject({
+      title: "Open Worktree in Finder",
       target: "/work/groundcrew-raycast-tem-3896",
       application: "Finder",
     });

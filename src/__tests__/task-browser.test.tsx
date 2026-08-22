@@ -52,6 +52,12 @@ vi.mock("@raycast/api", () => {
     Action,
     ActionPanel: mockComponent("raycast-action-panel"),
     Alert: { ActionStyle: { Destructive: "destructive" } },
+    Cache: class {
+      get() {
+        return undefined;
+      }
+      set() {}
+    },
     Color: {
       Blue: "blue",
       Green: "green",
@@ -152,6 +158,7 @@ function lifecycleMutations(overrides: Partial<LifecycleMutations> = {}): Lifecy
     stopTask: success,
     resumeTask: success,
     cleanupTask: success,
+    completeTask: success,
     ...overrides,
   };
 }
@@ -212,9 +219,11 @@ describe("TaskBrowser", () => {
     );
     expect(
       active
-        ?.findAll((node) => (node.type as string) === "raycast-action-push")
+        ?.findAll((node) =>
+          ["raycast-action", "raycast-action-push"].includes(node.type as string),
+        )
         .map((action) => action.props.title),
-    ).toContain("Stop Task");
+    ).toContain("Stop & Clean up Task");
     const preserved = findByType(renderer, "raycast-list-item").find(
       (item) => item.props.id === "tracker:REV-7",
     );
@@ -268,9 +277,11 @@ describe("TaskBrowser", () => {
     );
     expect(
       active
-        ?.findAll((node) => (node.type as string) === "raycast-action-push")
+        ?.findAll((node) =>
+          ["raycast-action", "raycast-action-push"].includes(node.type as string),
+        )
         .map((action) => action.props.title),
-    ).toContain("Stop Task");
+    ).toContain("Stop & Clean up Task");
   });
 
   it("shows loading, then source-neutral grouped rows with search fields and canonical filters", async () => {

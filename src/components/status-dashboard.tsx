@@ -1,7 +1,10 @@
 import {
   Action,
   ActionPanel,
+  Alert,
+  Cache,
   Color,
+  confirmAlert,
   Detail,
   Icon,
   Keyboard,
@@ -10,10 +13,11 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { GroundcrewClientError } from "../cli";
 import type {
+  GroundcrewLifecycleResult,
   GroundcrewStatusBlockedIssue,
   GroundcrewStatusBoardIssue,
   GroundcrewStatusInventory,
@@ -22,21 +26,27 @@ import type {
   GroundcrewStatusWorktree,
   GroundcrewTask,
 } from "../types/groundcrew";
+import { GroundcrewDoctor } from "./doctor";
 import {
   findCanonicalTask,
   findLifecycleTask,
   LifecycleActions,
   type LifecycleActionController,
+  lifecycleErrorDetail,
   type LifecycleMutations,
   type LifecycleTaskSelection,
   useLifecycleActionController,
 } from "./lifecycle-actions";
+import { WorkspaceActions } from "./workspace-actions";
 
 interface StatusDashboardProps {
+  cleanupAllTasks?: (options?: { force?: boolean }) => Promise<GroundcrewLifecycleResult>;
   loadStatus: () => Promise<GroundcrewStatusInventory>;
   loadTasks: () => Promise<GroundcrewTask[]>;
   mutations: LifecycleMutations;
 }
+
+const GROUNDCREW_INSTALL_URL = "https://www.npmjs.com/package/@clipboard-health/groundcrew";
 
 interface AsyncState<T> {
   error?: unknown;
@@ -55,8 +65,41 @@ interface StatusErrorPresentation {
   title: string;
 }
 
-function useAsyncValue<T>(loader: () => Promise<T>) {
-  const [state, setState] = useState<AsyncState<T>>({ isLoading: true });
+const cache = new Cache();
+
+function readCache<T>(key: string): T | undefined {
+  try {
+    const raw = cache.get(key);
+    return raw === undefined ? undefined : (JSON.parse(raw) as T);
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCache<T>(key: string, value: T): void {
+  try {
+    cache.set(key, JSON.stringify(value));
+  } catch {
+    // Cache write failures only cost first-paint speed; ignore them.
+  }
+}
+
+interface UseAsyncValueOptions {
+  cacheKey?: string;
+  revalidateIntervalMs?: number;
+}
+
+/**
+ * Loads a value, with optional stale-while-revalidate caching (renders the last
+ * snapshot instantly) and background auto-refresh while the view is open.
+ */
+function useAsyncValue<T>(loader: () => Promise<T>, options: UseAsyncValueOptions = {}) {
+  const { cacheKey, revalidateIntervalMs } = options;
+  const seed = cacheKey === undefined ? undefined : readCache<T>(cacheKey);
+  const [state, setState] = useState<AsyncState<T>>({
+    isLoading: true,
+    ...(seed === undefined ? {} : { value: seed }),
+  });
   const mounted = useRef(false);
   const requestId = useRef(0);
 
@@ -67,6 +110,9 @@ function useAsyncValue<T>(loader: () => Promise<T>) {
       const value = await loader();
       if (mounted.current && currentRequest === requestId.current) {
         setState({ isLoading: false, value });
+        if (cacheKey !== undefined) {
+          writeCache(cacheKey, value);
+        }
         return { kind: "success", value };
       }
       return { kind: "stale" };
@@ -77,18 +123,110 @@ function useAsyncValue<T>(loader: () => Promise<T>) {
       }
       return { kind: "stale" };
     }
-  }, [loader]);
+  }, [loader, cacheKey]);
 
   useEffect(() => {
     mounted.current = true;
     void reload();
+    const timer =
+      revalidateIntervalMs !== undefined && revalidateIntervalMs > 0
+        ? setInterval(() => {
+            void reload();
+          }, revalidateIntervalMs)
+        : undefined;
+    // Don't let the poll timer keep the process alive (matters for tests/headless).
+    timer?.unref?.();
     return () => {
       mounted.current = false;
       requestId.current += 1;
+      if (timer !== undefined) {
+        clearInterval(timer);
+      }
     };
-  }, [reload]);
+  }, [reload, revalidateIntervalMs]);
 
   return { ...state, reload };
+}
+
+function cleanupAllSummary(output: string): string | undefined {
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const cleaned = lines.filter((line) => /cleanup complete/i.test(line)).length;
+  const skipped = lines.filter((line) => /skipping/i.test(line)).length;
+  const failed = lines.filter((line) => /cleanup failed/i.test(line)).length;
+  const parts = [
+    cleaned > 0 ? `${cleaned} cleaned` : undefined,
+    skipped > 0 ? `${skipped} skipped` : undefined,
+    failed > 0 ? `${failed} failed` : undefined,
+  ].filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+function CleanupAllWorkspacesAction({
+  cleanupAllTasks,
+  count,
+  onRefresh,
+}: {
+  cleanupAllTasks: (options?: { force?: boolean }) => Promise<GroundcrewLifecycleResult>;
+  count: number;
+  onRefresh: () => Promise<void>;
+}) {
+  const workspaces = `${count} preserved ${count === 1 ? "workspace" : "workspaces"}`;
+  const run = async (force: boolean) => {
+    const confirmed = await confirmAlert(
+      force
+        ? {
+            title: `Force clean up ${workspaces}?`,
+            message:
+              "Removes every idle or interrupted Groundcrew workspace, including worktrees with uncommitted changes. Discarded changes cannot be recovered. Active sessions are still skipped.",
+            primaryAction: { title: "Force Clean up All", style: Alert.ActionStyle.Destructive },
+          }
+        : {
+            title: `Clean up ${workspaces}?`,
+            message:
+              "Removes every idle or interrupted Groundcrew workspace. Active sessions and worktrees with uncommitted changes are skipped.",
+            primaryAction: { title: "Clean up All", style: Alert.ActionStyle.Destructive },
+          },
+    );
+    if (!confirmed) {
+      return;
+    }
+    const toast = await showToast({
+      style: Toast.Style.Animated,
+      title: force ? "Force Cleaning up Idle Workspaces" : "Cleaning up Idle Workspaces",
+    });
+    const result = await cleanupAllTasks(force ? { force: true } : undefined);
+    const summary = cleanupAllSummary(`${result.stdout}\n${result.stderr}`);
+    if (result.kind === "success") {
+      toast.style = Toast.Style.Success;
+      toast.title = "Idle Workspaces Cleaned up";
+      toast.message = summary ?? "No workspaces required cleanup.";
+    } else {
+      toast.style = Toast.Style.Failure;
+      toast.title = "Couldn’t Clean up All Workspaces";
+      toast.message = lifecycleErrorDetail(result) ?? summary ?? "Cleanup failed.";
+    }
+    await onRefresh();
+  };
+  return (
+    <>
+      <Action
+        title="Clean up All Idle Workspaces"
+        icon={Icon.Trash}
+        style={Action.Style.Destructive}
+        shortcut={Keyboard.Shortcut.Common.RemoveAll}
+        onAction={() => run(false)}
+      />
+      <Action
+        title="Clean up All Idle Workspaces (Force)"
+        icon={Icon.Trash}
+        style={Action.Style.Destructive}
+        onAction={() => run(true)}
+      />
+    </>
+  );
 }
 
 function isActiveTask(task: GroundcrewStatusTask): boolean {
@@ -168,12 +306,14 @@ function localTaskId(task: GroundcrewStatusTask): string {
 
 function LocalTaskRow({
   canonicalTasks,
+  cleanupAllAction,
   inventory,
   lifecycleController,
   onRefresh,
   task,
 }: {
   canonicalTasks: readonly GroundcrewTask[];
+  cleanupAllAction?: ReactNode;
   inventory: GroundcrewStatusInventory;
   lifecycleController: LifecycleActionController;
   onRefresh: () => Promise<void>;
@@ -205,6 +345,7 @@ function LocalTaskRow({
           onRefresh={onRefresh}
           canonicalTasks={canonicalTasks}
           lifecycleController={lifecycleController}
+          cleanupAllAction={cleanupAllAction}
         />
       }
     />
@@ -213,12 +354,14 @@ function LocalTaskRow({
 
 function MissingWorkspaceRow({
   canonicalTasks,
+  cleanupAllAction,
   inventory,
   issue,
   lifecycleController,
   onRefresh,
 }: {
   canonicalTasks: readonly GroundcrewTask[];
+  cleanupAllAction?: ReactNode;
   inventory: GroundcrewStatusInventory;
   issue: GroundcrewStatusBoardIssue;
   lifecycleController: LifecycleActionController;
@@ -245,6 +388,7 @@ function MissingWorkspaceRow({
           onRefresh={onRefresh}
           canonicalTasks={canonicalTasks}
           lifecycleController={lifecycleController}
+          cleanupAllAction={cleanupAllAction}
         />
       }
     />
@@ -650,15 +794,37 @@ function selectionMarkdown(selection: StatusTaskSelection): string {
   ].join("\n");
 }
 
+function localWorktrees(selection: StatusTaskSelection): readonly GroundcrewStatusWorktree[] {
+  const local = selection.kind === "local" ? selection.task : undefined;
+  return (local?.worktrees ?? []).filter((worktree) => worktree.dir.trim().length > 0);
+}
+
+/** Workspace jump-in and copy actions (cmux, editor, attach, copies) for a local task. */
+function StatusWorkspaceActions({ selection }: { selection: StatusTaskSelection }) {
+  if (selection.kind !== "local") {
+    return null;
+  }
+  const worktrees = localWorktrees(selection);
+  if (worktrees.length === 0) {
+    return null;
+  }
+  return (
+    <WorkspaceActions
+      worktrees={worktrees}
+      taskId={selection.task.task}
+      {...(selection.task.attachCommand === undefined
+        ? {}
+        : { attachCommand: selection.task.attachCommand })}
+    />
+  );
+}
+
 function TaskResourceActions({ selection }: { selection: StatusTaskSelection }) {
   const url = selectionUrl(selection);
   const pullRequests = selectionPullRequests(selection).filter(
     (pullRequest) => pullRequest.url.trim().length > 0,
   );
-  const worktrees =
-    selection.kind === "local"
-      ? selection.task.worktrees.filter((worktree) => worktree.dir.trim().length > 0)
-      : [];
+  const worktrees = localWorktrees(selection);
   return (
     <>
       {url === undefined ? null : <Action.OpenInBrowser title="Open Task" url={url} />}
@@ -672,7 +838,12 @@ function TaskResourceActions({ selection }: { selection: StatusTaskSelection }) 
       {worktrees.map((worktree) => (
         <Action.Open
           key={worktree.dir}
-          title={worktrees.length === 1 ? "Open Worktree" : `Open ${worktree.repository} Worktree`}
+          title={
+            worktrees.length === 1
+              ? "Open Worktree in Finder"
+              : `Open ${worktree.repository} Worktree in Finder`
+          }
+          icon={Icon.Finder}
           target={worktree.dir.trim()}
           application="Finder"
         />
@@ -702,25 +873,33 @@ function HealthRowActions({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
 function TaskRowActions({
   canonicalTasks,
+  cleanupAllAction,
   inventory,
   lifecycleController,
   onRefresh,
   selection,
 }: {
   canonicalTasks: readonly GroundcrewTask[];
+  cleanupAllAction?: ReactNode;
   inventory: GroundcrewStatusInventory;
   lifecycleController: LifecycleActionController;
   onRefresh: () => Promise<void>;
   selection: StatusTaskSelection;
 }) {
+  // Primary (Enter) action is state-aware: live tasks open the running cmux workspace;
+  // preserved (idle/interrupted/exited) tasks lead with Resume via LifecycleActions.
+  const isLive = selection.kind === "local" && selection.task.session === "live";
+  const workspaceActions = <StatusWorkspaceActions selection={selection} />;
   return (
     <ActionPanel>
+      {isLive ? workspaceActions : null}
       <LifecycleActions
         controller={lifecycleController}
         taskId={selectionTaskId(selection)}
         task={findCanonicalTask(canonicalTasks, selectionTaskId(selection))}
         status={selection}
       />
+      {isLive ? null : workspaceActions}
       <Action.Push
         title="Show Task Details"
         icon={Icon.Sidebar}
@@ -728,6 +907,7 @@ function TaskRowActions({
           <StatusTaskDetail inventory={inventory} naturalTaskId={selectionTaskId(selection)} />
         }
       />
+      {cleanupAllAction}
       <TaskResourceActions selection={selection} />
       <RefreshStatusAction onRefresh={onRefresh} />
     </ActionPanel>
@@ -804,6 +984,7 @@ export function StatusTaskDetail({
       }
       actions={
         <ActionPanel>
+          <StatusWorkspaceActions selection={selection} />
           <TaskResourceActions selection={selection} />
         </ActionPanel>
       }
@@ -849,19 +1030,37 @@ function StatusActions({
     <ActionPanel>
       <RefreshStatusAction onRefresh={onRefresh} />
       {showPreferences ? (
-        <Action
-          title="Open Extension Preferences"
-          icon={Icon.Gear}
-          onAction={openExtensionPreferences}
-        />
+        <>
+          <Action.Push title="Run Doctor" icon={Icon.Stethoscope} target={<GroundcrewDoctor />} />
+          <Action
+            title="Open Extension Preferences"
+            icon={Icon.Gear}
+            onAction={openExtensionPreferences}
+          />
+          <Action.OpenInBrowser
+            title="Install Groundcrew CLI"
+            icon={Icon.Download}
+            url={GROUNDCREW_INSTALL_URL}
+          />
+        </>
       ) : null}
     </ActionPanel>
   );
 }
 
-export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDashboardProps) {
-  const { error, isLoading, reload, value: inventory } = useAsyncValue(loadStatus);
-  const { reload: reloadTasks, value: canonicalTasks } = useAsyncValue(loadTasks);
+export function StatusDashboard({
+  cleanupAllTasks,
+  loadStatus,
+  loadTasks,
+  mutations,
+}: StatusDashboardProps) {
+  const { error, isLoading, reload, value: inventory } = useAsyncValue(loadStatus, {
+    cacheKey: "groundcrew.status",
+    revalidateIntervalMs: 8000,
+  });
+  const { reload: reloadTasks, value: canonicalTasks } = useAsyncValue(loadTasks, {
+    cacheKey: "groundcrew.tasks",
+  });
   const reconcile = useCallback(
     async (taskId: string) => {
       const [statusResult, taskResult] = await Promise.all([reload(), reloadTasks()]);
@@ -894,6 +1093,14 @@ export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDash
   const preservedTasks =
     inventory?.tasks.filter((task) => task.worktrees.length > 0 && !isActiveTask(task)) ?? [];
   const missingLocalTasks = inventory?.tasks.filter((task) => task.worktrees.length === 0) ?? [];
+  const cleanupAllAction =
+    cleanupAllTasks !== undefined && preservedTasks.length > 0 ? (
+      <CleanupAllWorkspacesAction
+        cleanupAllTasks={cleanupAllTasks}
+        count={preservedTasks.length}
+        onRefresh={refresh}
+      />
+    ) : undefined;
   const degraded =
     inventory !== undefined &&
     (inventory.remote.lastAttemptStatus === "unavailable" ||
@@ -964,6 +1171,7 @@ export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDash
               onRefresh={refresh}
               canonicalTasks={canonicalTasks ?? []}
               lifecycleController={lifecycleController}
+              cleanupAllAction={cleanupAllAction}
             />
           ))}
         </List.Section>
@@ -982,6 +1190,7 @@ export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDash
               onRefresh={refresh}
               canonicalTasks={canonicalTasks ?? []}
               lifecycleController={lifecycleController}
+              cleanupAllAction={cleanupAllAction}
             />
           ))}
           {inventory.inProgressWithoutWorktree.map((issue) => (
@@ -992,6 +1201,7 @@ export function StatusDashboard({ loadStatus, loadTasks, mutations }: StatusDash
               onRefresh={refresh}
               canonicalTasks={canonicalTasks ?? []}
               lifecycleController={lifecycleController}
+              cleanupAllAction={cleanupAllAction}
             />
           ))}
         </List.Section>
