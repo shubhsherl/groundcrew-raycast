@@ -268,9 +268,7 @@ export async function createGroundcrewClient(options: CreateGroundcrewClientOpti
     const expanded = expandPathSegments(extraPath, environment.HOME);
     if (expanded.length > 0) {
       environment.PATH =
-        environment.PATH === undefined || environment.PATH.length === 0
-          ? expanded
-          : `${expanded}:${environment.PATH}`;
+        environment.PATH === undefined || environment.PATH.length === 0 ? expanded : `${expanded}:${environment.PATH}`;
     }
   }
   // Provide the Linear API key so provider-backed commands work without a shell-sourced env.
