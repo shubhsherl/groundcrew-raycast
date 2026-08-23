@@ -32,7 +32,7 @@ Browse, monitor, and operate [Groundcrew](https://www.npmjs.com/package/@clipboa
 All preferences are optional:
 
 - **Groundcrew Executable Path** — absolute path to `crew`. Leave blank to auto-discover from `PATH`, `/opt/homebrew/bin`, `/usr/local/bin`, then nvm. Set it for fnm/asdf or a wrapper (`which crew`).
-- **Additional PATH** — colon-separated directories prepended to `PATH` when `crew` runs, so it and the `node` / `git` / `gh` / `cmux` it calls resolve under Raycast's stripped environment (`~` and `$HOME` expand). Find them with `dirname $(which crew node git cmux gh) | sort -u | paste -sd: -`.
+- **Additional PATH** — colon-separated directories prepended to `PATH` when `crew` runs, so it and the `node` / `git` / `gh` / `cmux` it calls resolve under Raycast's stripped environment (`~` and `$HOME` expand). Find each tool's **stable** directory with `dirname "$(readlink -f "$(command -v node)")"` (and repeat for `cmux`, `gh`). Use the resolved install path — **not** a version manager's per-shell path such as fnm's `~/.local/state/fnm_multishells/<id>/bin`, which is deleted when the shell exits and won't exist when Raycast runs `crew`. For fnm that's usually `~/.local/share/fnm/node-versions/<version>/installation/bin:/opt/homebrew/bin`.
 - **Linear API Key** — exported to `crew` as `GROUNDCREW_LINEAR_API_KEY`. Set it only if Browse fails with "Linear API key not set" while Status works.
 
 ## Troubleshooting
