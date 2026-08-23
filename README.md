@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.png" alt="Groundcrew for Raycast icon" width="128" height="128">
+</p>
+
 # Groundcrew for Raycast
 
 Browse, monitor, and operate [Groundcrew](https://www.npmjs.com/package/@clipboard-health/groundcrew) tasks without leaving Raycast. Groundcrew dispatches coding agents to work on your tasks in isolated git worktrees; this extension is a control panel for the tasks and workspaces its CLI manages.
