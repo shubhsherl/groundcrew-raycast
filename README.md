@@ -55,6 +55,21 @@ missing piece. If you'd rather restore the whole environment in one place, use t
 [wrapper script](#the-universal-fix-a-wrapper-the-preference-points-at) below. The **Groundcrew
 Doctor** command surfaces exactly which of these is wrong.
 
+### `crew` not found — "command not found" or auto-discovery fails (executable path)
+
+**Cause:** the extension only auto-discovers `crew` from Raycast's `PATH`, then `/opt/homebrew/bin`
+and `/usr/local/bin`, then an **nvm** install (`$NVM_DIR/versions/node/*/bin`). It does **not** know
+the path layout of other version managers such as **fnm** or **asdf**, so a `crew` installed under
+those won't be found automatically.
+
+**Fix:** set the **Groundcrew Executable Path** preference (see [Configuration](#configuration)) to
+the absolute path of `crew`. Find it with `which crew` in your terminal — for fnm, prefer the stable
+`~/.local/share/fnm/node-versions/<version>/installation/bin/crew` over the ephemeral
+`~/.local/state/fnm_multishells/…` path. Groundcrew pins Node (currently `24.14.1`), so that path is
+stable until Groundcrew bumps its required Node version — at which point you reinstall `crew` and
+update this path together. (You'll still want **Additional PATH** set so the `#!/usr/bin/env node`
+shebang resolves — see below.)
+
 ### `env: node: No such file or directory` (PATH)
 
 **Cause:** `crew` is a Node script (`#!/usr/bin/env node`). Your `node` lives in a version-manager
