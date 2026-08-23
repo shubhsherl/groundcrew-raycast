@@ -3,7 +3,7 @@
 Browse, monitor, and operate [Groundcrew](https://www.npmjs.com/package/@clipboard-health/groundcrew) tasks without leaving Raycast. Groundcrew dispatches coding agents to work on your tasks in isolated git worktrees; this extension is a control panel for the tasks and workspaces its CLI manages.
 
 > [!IMPORTANT]
-> This extension drives the **Groundcrew CLI** installed on your Mac. It never stores or transmits credentials — the CLI owns all configuration, credentials, and task state. You must install and configure Groundcrew before using the extension.
+> This extension drives the **Groundcrew CLI** installed on your Mac. The CLI owns all configuration, credentials, and task state; you must install and configure Groundcrew before using the extension. The extension transmits nothing off your machine. It optionally stores an **Additional PATH** and a **Linear API Key** in Raycast's local preferences — used only to build the environment `crew` runs in (see [Configuration](#configuration)).
 
 ## Commands
 
@@ -28,7 +28,16 @@ Browse, monitor, and operate [Groundcrew](https://www.npmjs.com/package/@clipboa
 
 Auto-discovery does **not** cover fnm or asdf. On those setups — or any time `crew` needs environment your shell provides — set this preference to an absolute path (a [wrapper script](#the-universal-fix-a-wrapper-the-preference-points-at) is the most reliable choice; see Troubleshooting).
 
-**Editor Application** (optional) — the app used for "Open in Editor" on a task worktree (e.g. Visual Studio Code, Cursor). Leave it blank to use the macOS "Open With" picker.
+**Additional PATH** (optional) — colon-separated directories prepended to `PATH` when `crew` runs. Raycast launches tools with a bare `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`) that excludes Homebrew and version-manager directories, so `crew` — and the `node` / `git` / `gh` / `cmux` / `tmux` it shells out to — may not resolve. List the directories that hold them here (`~` and `$HOME` are expanded). Find them with:
+
+```sh
+dirname $(which crew node git cmux gh) | sort -u | paste -sd: -
+# e.g. /Users/you/.local/state/fnm_multishells/abc/bin:/opt/homebrew/bin
+```
+
+This is the simplest fix for the PATH problems in [Troubleshooting](#troubleshooting) and usually removes the need for a wrapper script.
+
+**Linear API Key** (optional) — exported to `crew` as `GROUNDCREW_LINEAR_API_KEY`. Set it only if `crew` can't otherwise read your key under Raycast's stripped environment (Browse fails with "Linear API key not set" while Status works). Stored in Raycast's local preferences; used only to spawn `crew`.
 
 ## Troubleshooting
 
@@ -38,9 +47,13 @@ loads `~/.zshrc` / `~/.zprofile` (and files like `~/.secrets`); Raycast does not
 relies on from your shell — the `node` that runs it, its provider API key, or the `git` / `gh` /
 `cmux` / `tmux` it shells out to — can be missing when a command runs from Raycast.
 
-Homebrew installs usually work out of the box, because `/opt/homebrew/bin` is already on Raycast's
-`PATH`. Node-version-manager installs (nvm, fnm, asdf) and shell-exported credentials are the common
-failure cases below. The **Groundcrew Doctor** command surfaces exactly which of these is wrong.
+Raycast's bare `PATH` does **not** include `/opt/homebrew/bin`, so even a Homebrew `crew` can fail to
+find `node` / `git` / `gh` / `cmux`. The quickest fix is the **Additional PATH** preference (see
+[Configuration](#configuration)): list your tool directories there and `crew` runs with them on
+`PATH` — no wrapper needed. Set the **Linear API Key** preference if a shell-exported key is the
+missing piece. If you'd rather restore the whole environment in one place, use the
+[wrapper script](#the-universal-fix-a-wrapper-the-preference-points-at) below. The **Groundcrew
+Doctor** command surfaces exactly which of these is wrong.
 
 ### `env: node: No such file or directory` (PATH)
 
@@ -48,8 +61,10 @@ failure cases below. The **Groundcrew Doctor** command surfaces exactly which of
 directory (e.g. `~/.local/share/fnm/.../bin`) that isn't on Raycast's `PATH`, so the shebang can't
 find it.
 
-**Fix:** use the wrapper below, which calls `node` by absolute path and puts your tool directories
-on `PATH`.
+**Fix:** add the directory holding your `node` to the **Additional PATH** preference (see
+[Configuration](#configuration)) — `crew` will then find it. If your `node` still isn't picked up,
+use the [wrapper below](#the-universal-fix-a-wrapper-the-preference-points-at), which calls `node` by
+absolute path.
 
 ### "Linear API key not set" — Browse fails but Status works (API key)
 
@@ -58,21 +73,26 @@ on `PATH`.
 which Raycast doesn't load. `crew status` (Status) only reads local files, so it keeps working —
 which is why Status succeeds while Browse fails.
 
-**Fix:** make the key available to `crew` when Raycast spawns it. The wrapper below sources the same
-file your shell does (`~/.secrets`); adjust the path if your key lives in `~/.zshrc` or elsewhere.
+**Fix:** set the **Linear API Key** preference (see [Configuration](#configuration)) — the extension
+exports it to `crew` as `GROUNDCREW_LINEAR_API_KEY`. Alternatively, the
+[wrapper below](#the-universal-fix-a-wrapper-the-preference-points-at) sources the same file your
+shell does (`~/.secrets`); adjust the path if your key lives in `~/.zshrc` or elsewhere.
 
 ### Cleanup fails with `Session: Unknown` / can't reconcile (session backend)
 
 **Cause:** `crew`'s workspace probe needs its session backend (`cmux` or `tmux`) and `git` / `gh` on
 `PATH`. Raycast strips them, so cleanup can't determine or tear down session state.
 
-**Fix:** the wrapper below adds `/opt/homebrew/bin` (where these live) to `PATH`.
+**Fix:** add `/opt/homebrew/bin` (where these live) to the **Additional PATH** preference (see
+[Configuration](#configuration)), or use the [wrapper below](#the-universal-fix-a-wrapper-the-preference-points-at).
 
 ### The universal fix: a wrapper the preference points at
 
-Create a small wrapper that restores the environment `crew` needs, then point the **Groundcrew
-Executable Path** preference at its absolute path (or place it at `/opt/homebrew/bin/crew` so
-auto-discovery finds it):
+For most setups the **Additional PATH** and **Linear API Key** preferences are enough. If you'd
+rather restore everything in one place — or `crew` needs environment those two don't cover — create a
+small wrapper that rebuilds the environment `crew` needs, then point the **Groundcrew Executable
+Path** preference at its absolute path (or place it at `/opt/homebrew/bin/crew` so auto-discovery
+finds it):
 
 ```sh
 #!/bin/sh
