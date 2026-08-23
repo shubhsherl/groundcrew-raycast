@@ -17,6 +17,8 @@ Browse, monitor, and operate [Groundcrew](https://www.npmjs.com/package/@clipboa
 - **Open Groundcrew Workspace** — open an existing pull request or branch in a worktree.
 - **Groundcrew Doctor** — run `crew doctor` to diagnose prerequisites, config, and Linear reachability.
 
+> Tip: Assign a hotkey to a command in Raycast (Extensions → Groundcrew → Groundcrew Status → Record Hotkey) to jump straight in without opening Raycast first.
+
 ## Prerequisites
 
 - **macOS** with [Raycast](https://www.raycast.com/).
