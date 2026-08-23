@@ -69,8 +69,6 @@ env -i HOME="$HOME" PATH="/usr/bin:/bin" ~/.local/bin/crew-raycast --version
 
 ## Manual Installation
 
-Until the extension is on the Raycast Store, install it from source. `npm run build` compiles it and installs it into Raycast permanently — it appears in your Raycast root search, no dev server required:
-
 ```sh
 git clone https://github.com/shubhsherl/groundcrew-raycast.git
 cd groundcrew-raycast
