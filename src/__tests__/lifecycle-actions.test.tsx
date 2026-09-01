@@ -171,12 +171,14 @@ describe("lifecycle action availability", () => {
       done: true,
     });
 
+    // Blocked todo tasks are still start-eligible: manual `crew start` overrides
+    // the blocker gate that only applies to `crew run` auto-dispatch.
     expect(
       getLifecycleAvailability({
         ...canonicalTask,
         blockers: [{ id: "linear:TEM-1", title: "Blocked", status: "in-progress" }],
       }),
-    ).toEqual({ cleanup: false, resume: false, start: false, stop: false, done: true });
+    ).toEqual({ cleanup: false, resume: false, start: true, stop: false, done: true });
 
     const missingInventory = statusInventory([]);
     missingInventory.inProgressWithoutWorktree.push({

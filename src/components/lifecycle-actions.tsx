@@ -149,7 +149,10 @@ export function getLifecycleAvailability(
   task?: GroundcrewTask,
   status?: LifecycleTaskSelection,
 ): LifecycleAvailability {
-  const canonicalStartEligible = task?.status === "todo" && task.blockers.length === 0 && !task.hasMoreBlockers;
+  // Offer Start for any unstarted task. Blockers only gate `crew run` auto-dispatch;
+  // manual `crew start <id>` launches a blocked task anyway (verified via --dry-run),
+  // so gating on blockers here just hides an action crew is willing to perform.
+  const canonicalStartEligible = task?.status === "todo";
   const local = status?.kind === "local" ? status.task : undefined;
   const hasPreservedWorktree = (local?.worktrees.length ?? 0) > 0;
   return {
