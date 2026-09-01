@@ -24,6 +24,15 @@ export type ProcessResult =
 
 const FORCE_KILL_AFTER_MS = 250;
 
+// `exit` fires when the process itself exits; `close` additionally waits for its
+// stdio pipes to end. A detached grandchild that inherited those pipes — e.g.
+// crew's long-lived clearance daemon spawned by `crew start` — can hold them open
+// indefinitely, so `close` may never arrive. Prefer `close` for complete output,
+// but fall back to `exit` after this grace window so a lingering daemon can't leave
+// the command hanging (which surfaced as a successful `crew start` reported as
+// "canceled"). The window is ample for a normal pipe close, which is near-instant.
+const CLOSE_GRACE_AFTER_EXIT_MS = 200;
+
 export async function runProcess(
   executablePath: string,
   argv: readonly string[],
@@ -40,6 +49,7 @@ export async function runProcess(
     let terminalRequest: "canceled" | "timeout" | undefined;
     let timeout: NodeJS.Timeout | undefined;
     let forceKillTimeout: NodeJS.Timeout | undefined;
+    let closeGrace: NodeJS.Timeout | undefined;
     let settled = false;
 
     const child = spawn(executablePath, [...argv], {
@@ -68,16 +78,7 @@ export async function runProcess(
       timeout = setTimeout(() => terminate("timeout"), options.timeoutMs);
     }
 
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      launchError = error;
-    });
-    child.on("close", (exitCode, signal) => {
+    const settle = (exitCode: number | null, signal: NodeJS.Signals | null) => {
       if (settled) {
         return;
       }
@@ -87,6 +88,9 @@ export async function runProcess(
       }
       if (forceKillTimeout !== undefined) {
         clearTimeout(forceKillTimeout);
+      }
+      if (closeGrace !== undefined) {
+        clearTimeout(closeGrace);
       }
       options.signal?.removeEventListener("abort", abort);
 
@@ -103,6 +107,30 @@ export async function runProcess(
         return;
       }
       resolve({ kind: "failure", exitCode, signal, stdout, stderr });
+    };
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => {
+      launchError = error;
+    });
+    // Settle on `close` for complete output when the pipes end promptly; otherwise
+    // fall back to `exit` after a grace window (see CLOSE_GRACE_AFTER_EXIT_MS) so a
+    // grandchild holding the pipes open can't leave the command hanging.
+    child.on("close", (exitCode, signal) => {
+      settle(exitCode, signal);
+    });
+    child.on("exit", (exitCode, signal) => {
+      if (settled) {
+        return;
+      }
+      closeGrace = setTimeout(() => {
+        settle(exitCode, signal);
+      }, CLOSE_GRACE_AFTER_EXIT_MS);
     });
   });
 }
