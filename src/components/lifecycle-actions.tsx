@@ -1,5 +1,5 @@
 import { Action, ActionPanel, Alert, confirmAlert, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { GroundcrewClient } from "../cli";
 import type {
@@ -274,15 +274,12 @@ export function useLifecycleActionController({
   const active = useRef(new Map<string, AbortController>());
   const [, render] = useState(0);
 
-  useEffect(
-    () => () => {
-      for (const controller of active.current.values()) {
-        controller.abort();
-      }
-      active.current.clear();
-    },
-    [],
-  );
+  // Intentionally NOT aborting in-flight actions on unmount. `crew start` / `resume` /
+  // `cleanup` must run to completion even if the command view closes — aborting mid
+  // -flight makes crew interrupt and roll the task back. It also broke starts under
+  // dev-mode React StrictMode, whose simulated unmount aborted the launch. The toast
+  // is a global HUD that survives the view, so results still surface. The explicit
+  // "Cancel" action (controller.abort) remains the only way to abort.
 
   const isMutating = useCallback((taskId: string) => active.current.has(taskId), []);
   const run = useCallback(
