@@ -175,7 +175,11 @@ function titleCase(value: string): string {
     .join(" ");
 }
 
-function reconciliationMessage(reconciliation: LifecycleReconciliation): string {
+// Summarizes the task's state after a lifecycle action from the refreshed task +
+// status data. Returns undefined when neither refresh located the task — a just
+// -started task can lag the status probe, so absence here is not authoritative and
+// must not be surfaced as if it were the result (crew's own output is).
+function reconciliationDetail(reconciliation: LifecycleReconciliation): string | undefined {
   const details: string[] = [];
   if (reconciliation.task !== undefined) {
     details.push(`Task: ${titleCase(reconciliation.task.status)}`);
@@ -197,10 +201,10 @@ function reconciliationMessage(reconciliation: LifecycleReconciliation): string 
         break;
     }
   }
-  if (!reconciliation.taskRefreshed || !reconciliation.statusRefreshed) {
+  if (details.length > 0 && (!reconciliation.taskRefreshed || !reconciliation.statusRefreshed)) {
     details.push("Refresh incomplete");
   }
-  return details.length === 0 ? "Task is absent from refreshed task and status data." : details.join(" · ");
+  return details.length === 0 ? undefined : details.join(" · ");
 }
 
 export function lifecycleErrorDetail(result: GroundcrewLifecycleResult): string | undefined {
@@ -345,10 +349,19 @@ export function useLifecycleActionController({
           toast.title = presentation.failure;
           break;
       }
+      // Prefer crew's own output as the authoritative result: its stdout summary on
+      // success (e.g. "✓ launched … / Marked in progress"), its stderr on failure
+      // (e.g. "Entity not found: Issue"). Fall back to the refreshed reconciliation
+      // detail, then the action's headline — never a bare "task absent" that reads
+      // like a failure when crew actually launched the task.
+      const reconciled = reconciliationDetail(reconciliation);
+      const crewOutput = lifecycleErrorDetail(result);
       toast.message =
-        result.kind === "success" || result.kind === "canceled"
-          ? reconciliationMessage(reconciliation)
-          : (lifecycleErrorDetail(result) ?? reconciliationMessage(reconciliation));
+        result.kind === "success"
+          ? (reconciled ?? crewOutput ?? presentation.success)
+          : result.kind === "canceled"
+            ? (reconciled ?? crewOutput ?? presentation.canceled)
+            : (crewOutput ?? reconciled ?? presentation.failure);
 
       if (active.current.get(taskId) === controller) {
         active.current.delete(taskId);
